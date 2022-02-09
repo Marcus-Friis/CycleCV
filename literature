@@ -5,4 +5,6 @@
 "YOU MOSTLY WALK ALONE: ANALYZING FEATURE ATTRIBUTION IN TRAJECTORY PREDICTION" : https://arxiv.org/pdf/2110.05304.pdf
 "Social LSTM: Human Trajectory Prediction in Crowded Spaces" : http://openaccess.thecvf.com/content_cvpr_2016/papers/Alahi_Social_LSTM_Human_CVPR_2016_paper.pdf
 "Deep learning for short-term traffic flow prediction" : kortlink.dk/sciencedirectassets/2etn4
-"Deep Neural Networks for traffic flow prediction" https://ieeexplore.ieee.org/abstract/document/7881687?casa_token=iJHEnGMc1VUAAAAA:JTBX3uUZD94GMihuIGmFPOS3sEakV_WXH80IUcDpM6IU0MooWm5Nl-n63RconkL1bckIFGfjqwI
+"Deep Neural Networks for traffic flow prediction" : https://ieeexplore.ieee.org/abstract/document/7881687?casa_token=iJHEnGMc1VUAAAAA:JTBX3uUZD94GMihuIGmFPOS3sEakV_WXH80IUcDpM6IU0MooWm5Nl-n63RconkL1bckIFGfjqwI
+"An LSTM Network for Highway Trajectory Prediction" : https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=8317913&casa_token=VJHEGwEk53MAAAAA:BkZqQH_lOmpV6LcZteHKm53cQxyfSGhicGaZxyIW7CpmBUiJ2qw0jQ45zpB3jbHfCOnIdyBgtso&tag=1
+"GPS trajectory clustering with Python" : https://towardsdatascience.com/gps-trajectory-clustering-with-python-9b0d35660156
