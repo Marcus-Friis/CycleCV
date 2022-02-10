@@ -12,6 +12,9 @@ __pycache__/
 *.pickel
 *.pkl
 
+# bsc-3m
+bsc-3m/
+
 # C extensions
 *.so
 
