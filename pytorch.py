@@ -151,7 +151,7 @@ class Optimization:
         return loss.item()
     
     def train(self, train_loader, val_loader, batch_size=64, n_epochs=50, n_features=1):
-        model_path = f'models/{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
+        model_path = f'models/{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.pt'
 
         for epoch in range(1, n_epochs + 1):
             batch_losses = []
