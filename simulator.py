@@ -1,9 +1,10 @@
 import numpy as np
 from PIL import Image, ImageOps
 import matplotlib.pyplot as plt
+import torch
 
 
-class Simulator:
+class SimulatorSk:
     def __init__(self, model, data):
         self.data = data
         self.model = model
@@ -41,7 +42,7 @@ class Simulator:
 
     @staticmethod
     def plot_simulation(trajs):
-        fig, ax = plt.subplots(figsize=(20, 20))
+        fig, ax = plt.subplots(figsize=(16, 16))
         im = Image.open("intersection2.png")
         im = ImageOps.flip(im)
         ax.set_xlim(0, 1280)
@@ -51,6 +52,58 @@ class Simulator:
         for traj in trajs:
             ax.scatter(traj[:, 0], traj[:, 1])
 
+        return ax
+
+
+class SimulatorTorch:
+    def __init__(self, model, data):
+        self.data = data
+        self.model = model
+        self._features = self.data.shape[-1]
+
+    def _prepare_sample(self, prev, pred):
+        next_sample = torch.tensor([
+            prev[0] + pred[0],  # x_pos
+            prev[1] + pred[1],  # y_pos
+            pred[0],  # x_vec
+            pred[1],  # y_vec
+            prev[2],  # x_vec2
+            prev[3],  # y_vec2
+            prev[-2],  # x_dest
+            prev[-1]  # y_dest
+        ]).float()
+        return next_sample.view(-1, self._features)
+
+    def _simulate_sample(self, sample, iterations=100):
+        sample = sample.view(-1, self._features)
+        for i in range(iterations):
+            pred = self.model(sample[-1:])[0]
+            new_sample = self._prepare_sample(sample[-1], pred)
+            sample = torch.concat((sample, new_sample))
+        return sample
+
+    def simulate(self, iterations=100):
+        # trajs = np.array([[]]).view(0, self._features)
+        trajs = []
+        for sample in self.data:
+            traj = self._simulate_sample(sample, iterations=iterations)
+            # trajs = np.concatenate((trajs, traj))
+            trajs.append(traj)
+        return trajs
+
+    @staticmethod
+    def plot_simulation(trajs):
+        fig, ax = plt.subplots(figsize=(16, 16))
+        im = Image.open("intersection2.png")
+        im = ImageOps.flip(im)
+        ax.set_xlim(0, 1280)
+        ax.set_ylim(0, 720)
+        ax.imshow(im, origin='lower')
+
+        for traj in trajs:
+            ax.scatter(traj[:, 0], traj[:, 1])
+
+        plt.show()
         return ax
 
 
@@ -68,6 +121,6 @@ if __name__ == '__main__':
     with open('model.pkl', 'rb') as f:
         clf = pickle.load(f)
 
-    sim = Simulator(clf, x[:2])
+    sim = SimulatorSk(clf, x[:2])
 
     print(sim.simulate().shape)
