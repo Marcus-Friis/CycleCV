@@ -2,9 +2,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
+from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence
 
 import datetime
-
+import pickle
+import numpy as np
 
 class LSTM(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, num_layers):
@@ -20,6 +22,7 @@ class LSTM(nn.Module):
         # hidden_dim, output_dim
         self.fc = nn.Linear(self.hidden_dim, self.output_dim)
 
+    # TODO: rewrite (hn, cn) as hiddenstate
     def forward(self, x, hn=None, cn=None):
         if hn is not None or cn is not None:
             output, (hn, cn) = self.lstm(x, (hn, cn))
@@ -29,6 +32,7 @@ class LSTM(nn.Module):
 
         return output, (hn, cn)
 
+    # TODO: improve predicting method
     def mikkel(self, x, future_preds=10):
         out = x
         output = out[:, -1:]
@@ -51,48 +55,46 @@ if __name__ == '__main__':
 
     asd = net.mikkel(x)
 
-    import pickle
-    import numpy as np
-
+    # TODO: normalize data before pickling
     with open('jeff.pkl', 'rb') as f:
         df = pickle.load(f)
 
-
     inputs = []
     targets = []
+    lengths = []
     for _, row in df.iterrows():
-        num = 15
-        if len(row['xs']) >= num:
-            traj = np.array([
-                list(row['xs'])[:num],
-                list(row['ys'])[:num],
-                list(row['p_x'])[:num],
-                list(row['p_y'])[:num],
-                [row['ds_x']] * num,  # * len(row['xs']),
-                [row['ds_y']] * num  # * len(row['xs']),
+        length = len(row['xs'])
+        if length:
+            lengths.append(length)
+
+            traj = torch.tensor([
+                list(row['xs']),
+                list(row['ys']),
+                list(row['p_x']),
+                list(row['p_y']),
+                [row['ds_x']] * len(row['xs']),
+                [row['ds_y']] * len(row['xs'])
             ]).T
+            traj[:, ::2] /= 1280
+            traj[:, 1::2] /= 720
             inputs.append(traj)
 
-            target = np.array([
-                list(row['t_x'])[:num],
-                list(row['t_y'])[:num]
+            target = torch.tensor([
+                list(row['t_x']),
+                list(row['t_y'])
             ]).T
+            target[:, 0] /= 1280
+            traj[:, 1] /= 720
             targets.append(target)
 
-    inputs = np.array(inputs)
-    targets = np.array(targets)
-
-    inputs = torch.from_numpy(inputs).float()
-    targets = torch.from_numpy(targets).float()
-
-    inputs[:,:,::2] /= 1280
-    inputs[:, :, 1::2] /= 720
-
-    targets[:,:,0] /= 1280
-    targets[:, :, 1] /= 720
+    # TODO: implement packed paddings to use full sequences
+    # inputs = pad_sequence(inputs, batch_first=True)
+    # inputs = pack_padded_sequence(inputs, lengths, batch_first=True, enforce_sorted=False)
+    #
+    # targets = pad_sequence(targets, batch_first=True)
+    # targets = pack_padded_sequence(targets, lengths, batch_first=True, enforce_sorted=False)
 
     model = LSTM(6, 64, 2, 2)
-
 
     batch_size = 64
     dropout = 0.2
