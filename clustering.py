@@ -23,6 +23,10 @@ def main():
     xc = np.array(clusterer.fit_predict(x))
     df['cluster'] = xc
 
+    with open('bsc-3m/traj_clustered.pkl', 'wb') as f:
+        pickle.dump(df, f)
+    
+    """
     col = sns.color_palette()
     print('plotting all clusters')
     fig, ax = plt.subplots(figsize=(16, 16))
@@ -50,6 +54,7 @@ def main():
         for _, row in df_c.iterrows():
             ax.plot(row['xs'], row['ys'], color=col[0], alpha=0.3)
         plt.savefig('figs/cluster_' + str(cluster) + '.svg', dpi=150)
+    """
 
 
 if __name__ == '__main__':
