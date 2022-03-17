@@ -73,12 +73,14 @@ class Wrangler:
         v = np.vstack((x, y)).T
         return np.linalg.norm(v - mid, axis=1)
 
-    def init_attributes(self, step_size: int = 1):
+    def init_attributes(self, step_size: int = 1, dump: bool = False, path: str = None):
         """
         wrangle data and calculate various attributes from DataFrame,
         must be done before other wrangling,
         can also be loaded with load_pdf
 
+        :param path: path to save location
+        :param dump: bool - save file
         :param step_size: use every step_size frames
         :return: pdf
         """
@@ -111,6 +113,13 @@ class Wrangler:
             d['direction'].append(self.direction_dict[row['cluster']])
 
         self.pdf = pd.DataFrame(d)
+
+        if dump:
+            if path is None:
+                self.dump_pickle(self.pdf, 'pdf.pkl')
+            else:
+                self.dump_pickle(self.pdf, path)
+
         return self
 
     def load_pdf(self, path: str):

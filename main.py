@@ -1,87 +1,66 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import TensorDataset, DataLoader
-
 import pickle
 import pandas as pd
 import numpy as np
-
-from pytorch import *
-from mikkel import Mads
+import configparser
 
 import matplotlib.pyplot as plt
 from PIL import Image, ImageOps
+import seaborn as sns
+
+import hdbscan
+
+from wrangler import Wrangler
+from clustering_helper_funcs import *
 
 
-# read and prepare training data
-with open("train.pkl", "rb") as f:
-    df = pickle.load(f)
-x = df[['x_pos', 'y_pos', 'x_vec', 'y_vec', 'x_vec2', 'y_vec2', 'x_dest', 'y_dest']].to_numpy()
-y = df[['x_tar', 'y_tar']].to_numpy()
+def main():
+    config = configparser.ConfigParser()
+    config.read('settings.ini')
+    config = config['DEFAULT']
 
-x = torch.from_numpy(x).float()
-y = torch.from_numpy(y).float()
-train = TensorDataset(x, y)
-train_loader = DataLoader(train, batch_size=64, shuffle=False, drop_last=True)
+    if config['wrangle']:
+        # load trajectory dataframes from pickle and merge to get frame data
+        print('loading data...')
+        df = Wrangler.load_pickle('bsc-3m/traj_01_elab.pkl')
+        df_frames = Wrangler.load_pickle('bsc-3m/traj_01_elab_new.pkl')
+        df = df.join(df_frames['frames'])
 
-# read and prepare validation data
-with open("val.pkl", "rb") as f:
-    df = pickle.load(f)
-x = df[['x_pos', 'y_pos', 'x_vec', 'y_vec', 'x_vec2', 'y_vec2', 'x_dest', 'y_dest']].to_numpy()
-y = df[['x_tar', 'y_tar']].to_numpy()
+        # load traffic lights coordinates and color info
+        l_xy = Wrangler.load_pickle('bsc-3m/signal_lines_true.pickle')
+        l_df = pd.read_csv('bsc-3m/signals_dense.csv')
 
-x = torch.from_numpy(x).float()
-y = torch.from_numpy(y).float()
-val = TensorDataset(x, y)
-val_loader = DataLoader(train, batch_size=64, shuffle=False, drop_last=True)
+        # select strictly cars, remove later?
+        df, _ = Wrangler.filter_class(df, ['Car'])
 
-# set device, cuda does not work on my pc
-# device = 'cuda' if torch.cuda.is_available() else 'cpu'
-device = 'cpu'
-print(f'Using {device} device')
+        # cluster and remove outliers
+        # HDBSCAN for now, try other in future?
+        print('clustering...')
+        min_cluster_size, min_samples, cluster_selection_epsilon = get_hyperparameters('Car', '')
+        clusterer = hdbscan.HDBSCAN(
+            min_cluster_size=min_cluster_size,
+            min_samples=min_samples,
+            cluster_selection_epsilon=cluster_selection_epsilon
+        )
+        x = df[['x0', 'y0', 'x1', 'y1']].to_numpy()  # prepare data for clustering
+        xc = np.array(clusterer.fit_predict(x))
+        df['cluster'] = xc
+        fdf = detect_outliers(clusterer, df)
+        fdf = fdf.loc[fdf['cluster'] != -1]
 
-input_dim = 8
-output_dim = 2
-hidden_dim = 100
-layer_dim = 3
-batch_size = 64
-dropout = 0.2
-n_epochs = 100
-learning_rate = 1e-3
-weight_decay = 1e-6
+        # wrangle data into shape
+        print('wrangling data...')
+        wr = Wrangler(fdf, l_xy, l_df)\
+            .init_attributes(dump=config['dump'], path=config['path']+'pdf.pkl')\
+            .get_nndf(dump=config['dump'], path=config['path']+'pdf.pkl')
+        nndf = wr.nndf
 
-model_params = {
-    'input_dim': input_dim,
-    'hidden_dim': hidden_dim,
-    'layer_dim': layer_dim,
-    'output_dim': output_dim,
-    'dropout_prob': dropout
-}
+    else:
+        pdf = Wrangler.load_pickle(config['path'] + 'pdf.pkl')
+        nndf = Wrangler.load_pickle(config['path'] + 'nndf.pkl')
 
-model = Mads().to(device).float()
-# model = get_model('LSTM', model_params).to(device).float()
-
-# loss_fn = nn.MSELoss(reduction="mean")
-# optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-#
-# opt = Optimization(model=model, loss_fn=loss_fn, optimizer=optimizer)
-# opt.train(train_loader, val_loader, batch_size=batch_size, n_epochs=n_epochs, n_features=input_dim)
-# opt.plot_losses()
-
-# predictions, values = opt.evaluate(test_loader_one, batch_size=1, n_features=input_dim)
+    if config['plot']:
+        pass  # plot beautiful stuff
 
 
-model.load_state_dict(torch.load('models/2022-02-17_15-16-03.pt'))
-tis = torch.tensor([
-        [[1050, 275, 0, 0, 0, 0, 1000, 470]],
-        [[580*2, 50*2, 0, 0, 0, 0, 250*2, 280*2]],
-        [[200*2, 225*2, 0, 0, 0, 0, 500*2, 250*2]],
-        [[125*2, 200*2, 0, 0, 0, 0, 460*2, 50*2]],
-        [[580*2, 50*2, 0, 0, 0, 0, 250*2, 300*2]],
-        [[150*2, 240*2, 0, 0, 0, 0, 250*2, 300*2]]
-        ]).float()
-from simulator import SimulatorTorch
-sim = SimulatorTorch(model, tis)
-asd = sim.simulate()
-sim.plot_simulation(asd)
+if __name__ == '__main__':
+    main()

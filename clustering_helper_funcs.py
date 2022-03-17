@@ -43,9 +43,16 @@ def get_hyperparameters(classes: str, algorithm: str, cluster: int = -1) -> tupl
 
 
 def detect_outliers(clusterer, df):
+    """
+    outlier detection for HDBSCAN
+
+    :param clusterer: HDBSCAN
+    :param df: DataFrame
+    :return: df_o - with removed outliers
+    """
     # Locating all outliers.
     threshold = pd.Series(clusterer.outlier_scores_).quantile(0.97)  # threshold for cutoff.
     outliers = np.where(clusterer.outlier_scores_ > threshold)[0]
     df["outliers"] = clusterer.outlier_scores_
-    df_o = df[df["outliers"] > threshold]
-    return df_o, df
+    df = df[df["outliers"] < threshold]
+    return df
