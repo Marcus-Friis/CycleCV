@@ -88,13 +88,32 @@ class Wrangler:
             'x': [],
             'y': [],
             'euc': [],
+            'd_t-1': [],
+            'd_t-2': [],
+            'd_t-3': [],
             'd_light': [],
-            'light_color': [],
+            'l0': [],
+            'l1': [],
+            'l2': [],
+            'l3': [],
+            'dir_0': [],
+            'dir_1': [],
+            'dir_2': [],
             'frames': [],
-            'class': [],
             'cluster': [],
+            'class': [],
+            'light_color': [],
             'direction': []
+
         }
+
+        l_enc = OneHotEncoder(handle_unknown='ignore').fit(np.array([0, 1, 2, 3]).reshape(-1, 1))
+        d_enc = OneHotEncoder(handle_unknown='ignore').fit(np.array(['left', 'straight', 'right']).reshape(-1, 1))
+        classes = np.unique(self.df['class']).reshape(-1, 1)
+        c_enc = OneHotEncoder(handle_unknown='ignore').fit(classes)
+
+        for i, n in enumerate(classes):
+            d['c_' + str(i)] = []
 
         for _, row in self.df.iterrows():
             rowx = np.array(row['xs'][::step_size])
@@ -102,15 +121,49 @@ class Wrangler:
             frames = np.array(row['frames'][::step_size][:-1])
             l_mid = self._get_mid(self.l_xy[self.light_dict[row['cluster']]])
 
+            encoding = c_enc.transform([[row['class']]]).toarray()
+            for i in range(classes.shape[0]):
+                d['c_'+str(i)].append(encoding[0,i])
+
             d['x'].append(rowx[:-1])
             d['y'].append(rowy[:-1])
-            d['light_color'].append(np.array([self.l_df.loc[f][str(self.light_dict[row['cluster']])] for f in frames]))
+            l_color = np.array([self.l_df.loc[f][str(self.light_dict[row['cluster']])] for f in frames])
+            d['light_color'].append(l_color)
             d['d_light'].append(self._d2l(rowx[:-1], rowy[:-1], l_mid))
-            d['euc'].append(self._euc(rowx, rowy))
+            encoding = l_enc.transform(l_color.reshape(-1, 1)).toarray()
+            for n in range(4):
+                d['l' + str(n)].append(encoding[:, n])
+
+            eucs = self._euc(rowx, rowy)
+            d['euc'].append(eucs)
             d['frames'].append(frames)
             d['class'].append(row['class'])
             d['cluster'].append(row['cluster'])
-            d['direction'].append(self.direction_dict[row['cluster']])
+            direction = self.direction_dict[row['cluster']]
+            d['direction'].append(direction)
+            encoding = d_enc.transform([[direction]]).toarray()
+            for n in range(3):
+                d['dir_' + str(n)].append([encoding[0, n]]*len(rowx-1))
+
+            d_t1 = []
+            d_t2 = []
+            d_t3 = []
+            for i in range(len(rowx) - 1):
+                if i >= 1:
+                    d_t1.append(eucs[i - 1])
+                else:
+                    d_t1.append(0)
+                if i >= 2:
+                    d_t2.append(eucs[i - 2])
+                else:
+                    d_t2.append(0)
+                if i >= 3:
+                    d_t3.append(eucs[i - 3])
+                else:
+                    d_t3.append(0)
+            d['d_t-1'].append(d_t1)
+            d['d_t-2'].append(d_t2)
+            d['d_t-3'].append(d_t3)
 
         self.pdf = pd.DataFrame(d)
 
@@ -165,38 +218,31 @@ class Wrangler:
             'target': []
         }
 
-        l_enc = OneHotEncoder(handle_unknown='ignore').fit(np.array([0, 1, 2, 3]).reshape(-1, 1))
-        d_enc = OneHotEncoder(handle_unknown='ignore').fit(np.array(['left', 'straight', 'right']).reshape(-1, 1))
-
         for index, row in self.pdf.iterrows():
             for i in range(3, len(row['x'])):
                 d['index'].append(index)
                 d['x'].append(row['x'][i])
                 d['y'].append(row['y'][i])
-                d['d_t-1'].append(row['euc'][i - 1])
-                d['d_t-2'].append(row['euc'][i - 2])
-                d['d_t-3'].append(row['euc'][i - 3])
+                d['d_t-1'].append(row['d_t-1'][i])
+                d['d_t-2'].append(row['d_t-2'][i])
+                d['d_t-3'].append(row['d_t-3'][i])
                 d['d_light'].append(row['d_light'][i])
                 d['frame'].append(row['frames'][i])
                 d['cluster'].append(row['cluster'])
                 d['class'].append(row['class'])
                 d['target'].append(row['euc'][i])
 
-                # light color one hot encoding
-                encoding = l_enc.transform([[row['light_color'][i]]]).toarray()
                 for n in range(4):
-                    d['l' + str(n)].append(encoding[0, n])
+                    d['l' + str(n)].append(row['l' + str(n)][i])
 
-                # direction one hot encoding
-                encoding = d_enc.transform([[row['direction']]]).toarray()
                 for n in range(3):
-                    d['dir_' + str(n)].append(encoding[0, n])
+                    d['dir_' + str(n)].append(row['dir_' + str(n)][i])
 
         self.nndf = pd.DataFrame(d)
 
         if dump:
             if path is None:
-                self.dump_pickle(self.nndf, 'pdf.pkl')
+                self.dump_pickle(self.nndf, 'nndf.pkl')
             else:
                 self.dump_pickle(self.nndf, path)
 
