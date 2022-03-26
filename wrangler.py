@@ -101,6 +101,7 @@ class Wrangler:
             'dir_2': [],
             'frames': [],
             'cluster': [],
+            'light_index' : [],
             'class': [],
             'light_color': [],
             'direction': []
@@ -128,6 +129,7 @@ class Wrangler:
             d['x'].append(rowx[:-1])
             d['y'].append(rowy[:-1])
             l_color = np.array([self.l_df.loc[f][str(self.light_dict[row['cluster']])] for f in frames])
+            d['light_index'].append(self.light_dict[row['cluster']])
             d['light_color'].append(l_color)
             d['d_light'].append(self._d2l(rowx[:-1], rowy[:-1], l_mid))
             encoding = l_enc.transform(l_color.reshape(-1, 1)).toarray()
@@ -237,6 +239,10 @@ class Wrangler:
 
                 for n in range(3):
                     d['dir_' + str(n)].append(row['dir_' + str(n)][i])
+
+                # d['traj_x'].append(row['x'][i:])
+                # d['traj_y'].append(row['y'][i:])
+                # d['traj_frames'].append(row['frames'][i:])
 
         self.nndf = pd.DataFrame(d)
 
