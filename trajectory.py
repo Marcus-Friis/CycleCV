@@ -76,7 +76,8 @@ class Trajectory:
                 'l2', 'l3', 'dir_0', 'dir_1', 'dir_2']
 
         # calculate distance, get xy and update traj_rest
-        d_travel = self.clf.predict(self.sim_data[cols].to_numpy())[0]
+        X = self.sim_data[cols].iloc[-1].to_numpy().reshape(1,-1)
+        d_travel = self.clf.predict(X)[0]
         self.distances.append(d_travel)
         x, y, self.traj_rest = self.traverse_trajectory(self.sim_data['x'].iloc[i], self.sim_data['y'].iloc[i],
                                                         d_travel, self.traj_rest)
