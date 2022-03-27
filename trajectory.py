@@ -1,13 +1,12 @@
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import OneHotEncoder
+from abc import ABC, abstractmethod
 
-from wrangler import Wrangler
 
-
-class Trajectory:
+class Trajectory(ABC):
     full_sim_data = pd.DataFrame(columns=['x', 'y', 'd_t-1', 'd_t-2', 'd_t-3', 'd_light', 'l0', 'l1',
-                                          'l2', 'l3', 'dir_0', 'dir_1', 'dir_2', 'frame'])
+                                          'l2', 'l3', 'dir_0', 'dir_1', 'dir_2', 'frame', 'class'])
     l_enc = OneHotEncoder(handle_unknown='ignore').fit(np.array([[0, 1, 2, 3]]).reshape(-1, 1))
 
     def __init__(self, data, l_df, l_xy, clf):
@@ -30,13 +29,14 @@ class Trajectory:
         self.traj_rest = self.traj_full[1:]
 
         # variables for getting relevant light info
-        self.light_index = self.data['light_index']
+        self.light_index = int(self.data['light_index'])
         n = self.l_xy[self.light_index]
         self.light_mid = np.array([sum(n['x']) / len(n['x']), sum(n['y']) / len(n['y'])])
 
         # the simulated data and history of distances
         self.sim_data = None
         self.distances = []
+        self.c = self.data['class']
 
     def init_sim(self, frame: int, i: int = 0):
         """
@@ -69,11 +69,16 @@ class Trajectory:
 
         # add current frame to dataframe
         d['frame'] = [frame]
+        d['class'] = [self.c]
 
         # save data, add to DataFrame of all data
         self.sim_data = pd.DataFrame(d)
         Trajectory.full_sim_data = pd.concat((Trajectory.full_sim_data, self.sim_data))
         return self.sim_data
+
+    @abstractmethod
+    def predict(self):
+        pass
 
     def step(self, frame: int, i: int = -1):
         """
@@ -91,8 +96,7 @@ class Trajectory:
                 'l2', 'l3', 'dir_0', 'dir_1', 'dir_2']
 
         # calculate distance, get xy and update traj_rest
-        x_predict = self.sim_data[cols].iloc[-1].to_numpy().reshape(1, -1)
-        d_travel = self.clf.predict(x_predict)[0]
+        d_travel = self.predict()
         self.distances.append(d_travel)
         x, y, self.traj_rest = self.traverse_trajectory(self.sim_data['x'].iloc[i], self.sim_data['y'].iloc[i],
                                                         d_travel, self.traj_rest)
@@ -118,6 +122,7 @@ class Trajectory:
 
         # updated frame
         d['frame'] = frame
+        d['class'] = self.c
         self.sim_data = pd.concat([self.sim_data, pd.DataFrame(d)], ignore_index=True)
         Trajectory.full_sim_data = pd.concat((Trajectory.full_sim_data, pd.DataFrame(d)))
         return self.sim_data
@@ -152,21 +157,7 @@ class Trajectory:
 
 
 def main():
-    clf = Wrangler.load_pickle('models/model.pkl')
-    # nndf = Wrangler.load_pickle('data/nndf.pkl')
-    pdf = Wrangler.load_pickle('data/pdf.pkl')
-    l_df = pd.read_csv('bsc-3m/signals_dense.csv')
-    l_xy = Wrangler.load_pickle('bsc-3m/signal_lines_true.pickle')
-
-    t1 = Trajectory(pdf.iloc[0], l_df, l_xy, clf)
-    t2 = Trajectory(pdf.iloc[1], l_df, l_xy, clf)
-    t1.init_sim(0, 0)
-    t2.init_sim(0, 0)
-    for frame in range(10, 100, 10):
-        t1.step(frame)
-        t2.step(frame)
-    print(t1.full_sim_data)
-    print(t2.full_sim_data)
+    pass
 
 
 if __name__ == '__main__':
