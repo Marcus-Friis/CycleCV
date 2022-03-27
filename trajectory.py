@@ -5,6 +5,10 @@ from sklearn.preprocessing import OneHotEncoder
 
 
 class Trajectory:
+    full_sim_data = pd.DataFrame(columns=['x', 'y', 'd_t-1', 'd_t-2', 'd_t-3', 'd_light', 'l0', 'l1',
+                                          'l2', 'l3', 'dir_0', 'dir_1', 'dir_2', 'frame'])
+    l_enc = OneHotEncoder(handle_unknown='ignore').fit(np.array([[0, 1, 2, 3]]).reshape(-1, 1))
+
     def __init__(self, data, l_df, l_xy, clf):
         """
         class for simulating trajectories
@@ -14,19 +18,22 @@ class Trajectory:
         :param l_xy: list of dicts with xy for signals
         :param clf: trained classifier implementing sklearn interface
         """
+        # data and clf for wrangling and predicting
         self.data = data
         self.l_df = l_df
         self.l_xy = l_xy
         self.clf = clf
 
+        # trajectory variables for full trajectory and remaining when simulating
         self.traj_full = np.array([data['x'], data['y']]).T
         self.traj_rest = self.traj_full[1:]
 
+        # variables for getting relevant light info
         self.light_index = self.data['light_index']
         n = self.l_xy[self.light_index]
         self.light_mid = np.array([sum(n['x']) / len(n['x']), sum(n['y']) / len(n['y'])])
-        self.l_enc = OneHotEncoder(handle_unknown='ignore').fit(np.array([[0, 1, 2, 3]]).reshape(-1, 1))
 
+        # the simulated data and history of distances
         self.sim_data = None
         self.distances = []
 
@@ -38,26 +45,33 @@ class Trajectory:
         :param i: int, which index to start from
         :return: DataFrame, ready to simulate
         """
-        d = {'x': self.data['x'][i], 'y': self.data['y'][i]}
+        d = {'x': self.data['x'][i], 'y': self.data['y'][i]}  # init xy coordinate
 
+        # init previous distances and save in hist of distances
         for n in ['1', '2', '3']:
             string = 'd_t-' + n
             self.distances.append(self.data[string][i])
             d[string] = self.distances[-1]
         self.distances = self.distances[::-1]
 
-        d['d_light'] = self.data['d_light'][i]
+        d['d_light'] = self.data['d_light'][i]  # get dist to light
 
+        # one-hot-encode light color to current frame and add to data
         l_color = self.l_df.loc[frame][str(self.light_index)]
         encoding = self.l_enc.transform([[l_color]]).toarray()
         for n in range(4):
             d['l' + str(n)] = [encoding[0, n]]
 
+        # get direction from data
         for n in ['dir_0', 'dir_1', 'dir_2']:
             d[n] = [self.data[n][i]]
 
+        # add current frame to dataframe
         d['frame'] = [frame]
+
+        # save data, add to DataFrame of all data
         self.sim_data = pd.DataFrame(d)
+        Trajectory.full_sim_data = pd.concat((Trajectory.full_sim_data, self.sim_data))
         return self.sim_data
 
     def step(self, frame: int, i: int = -1):
@@ -76,8 +90,8 @@ class Trajectory:
                 'l2', 'l3', 'dir_0', 'dir_1', 'dir_2']
 
         # calculate distance, get xy and update traj_rest
-        X = self.sim_data[cols].iloc[-1].to_numpy().reshape(1,-1)
-        d_travel = self.clf.predict(X)[0]
+        x_predict = self.sim_data[cols].iloc[-1].to_numpy().reshape(1, -1)
+        d_travel = self.clf.predict(x_predict)[0]
         self.distances.append(d_travel)
         x, y, self.traj_rest = self.traverse_trajectory(self.sim_data['x'].iloc[i], self.sim_data['y'].iloc[i],
                                                         d_travel, self.traj_rest)
@@ -104,6 +118,7 @@ class Trajectory:
         # updated frame
         d['frame'] = frame
         self.sim_data = pd.concat([self.sim_data, pd.DataFrame(d)], ignore_index=True)
+        Trajectory.full_sim_data = pd.concat((Trajectory.full_sim_data, pd.DataFrame(d)))
         return self.sim_data
 
     @staticmethod
@@ -137,16 +152,17 @@ class Trajectory:
 
 def main():
     clf = Wrangler.load_pickle('models/model.pkl')
-    nndf = Wrangler.load_pickle('data/nndf.pkl')
+    # nndf = Wrangler.load_pickle('data/nndf.pkl')
     pdf = Wrangler.load_pickle('data/pdf.pkl')
     l_df = pd.read_csv('bsc-3m/signals_dense.csv')
     l_xy = Wrangler.load_pickle('bsc-3m/signal_lines_true.pickle')
 
-    row = pdf.iloc[0]
-    t = Trajectory(row, l_df, l_xy, clf)
-    print(t.init_sim(0, 0))
-    for frame in range(10,100,10):
-        print(t.step(frame))
+    t1 = Trajectory(pdf.iloc[0], l_df, l_xy, clf)
+    t2 = Trajectory(pdf.iloc[1], l_df, l_xy, clf)
+    t2.init_sim(0, 0)
+    for frame in range(10, 100, 10):
+        t1.step(frame)
+        t2.step(frame)
 
 
 if __name__ == '__main__':
