@@ -1,8 +1,11 @@
 import pickle
 
+import hdbscan
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import OneHotEncoder
+
+from clustering_helper_funcs import get_hyperparameters, detect_outliers
 
 
 class Wrangler:
@@ -125,7 +128,7 @@ class Wrangler:
 
             encoding = c_enc.transform([[row['class']]]).toarray()
             for i in range(classes.shape[0]):
-                d['c_'+str(i)].append(encoding[0,i])
+                d['c_'+str(i)].append(encoding[0, i])
 
             d['x'].append(rowx[:-1])
             d['y'].append(rowy[:-1])
@@ -295,17 +298,36 @@ class Wrangler:
 
 
 def main():
-    df = Wrangler.load_pickle('bsc-3m/traj_clustered.pkl')
-    frames = Wrangler.load_pickle('bsc-3m/traj_01_elab_new.pkl')
-    df = df.join(frames['frames'])
-    df = df.loc[df['cluster'] != -1]
+    df = Wrangler.load_pickle('bsc-3m/traj_01_elab.pkl')
+    df_frames = Wrangler.load_pickle('bsc-3m/traj_01_elab_new.pkl')
+    df = df.join(df_frames['frames'])
 
+    # load traffic lights coordinates and color info
     l_xy = Wrangler.load_pickle('bsc-3m/signal_lines_true.pickle')
     l_df = pd.read_csv('bsc-3m/signals_dense.csv')
 
-    wng = Wrangler(df, l_xy, l_df).init_attributes(20).get_nndf()
-    a = wng.nndf
-    print(a)
+    # select strictly cars, remove later?
+    df, _ = Wrangler.filter_class(df, ['Car'])
+
+    # cluster and remove outliers
+    # HDBSCAN for now, try other in future?
+    min_cluster_size, min_samples, cluster_selection_epsilon = get_hyperparameters('Car', '')
+    clusterer = hdbscan.HDBSCAN(
+        min_cluster_size=min_cluster_size,
+        min_samples=min_samples,
+        cluster_selection_epsilon=cluster_selection_epsilon
+    )
+    x = df[['x0', 'y0', 'x1', 'y1']].to_numpy()  # prepare data for clustering
+    xc = np.array(clusterer.fit_predict(x))
+    df['cluster'] = xc
+    fdf = detect_outliers(clusterer, df)
+    fdf = fdf.loc[fdf['cluster'] != -1]
+
+    # wrangle data into shape
+    wr = Wrangler(fdf, l_xy, l_df) \
+        .init_attributes(step_size=1, dump=True,
+                         path='data/pdf.pkl') \
+        .get_nndf(dump=True, path='data/nndf.pkl')
 
 
 if __name__ == '__main__':
