@@ -1,7 +1,8 @@
-import pandas as pd
 import numpy as np
-from wrangler import Wrangler
+import pandas as pd
 from sklearn.preprocessing import OneHotEncoder
+
+from wrangler import Wrangler
 
 
 class Trajectory:
@@ -83,7 +84,7 @@ class Trajectory:
         :return: DataFrame, all simulated data
         """
         if self.sim_data is None:  # if no sim_data, step() cannot be executed
-            return
+            raise RuntimeError('sim_data not initialized')
 
         d = {}
         cols = ['x', 'y', 'd_t-1', 'd_t-2', 'd_t-3', 'd_light', 'l0', 'l1',
@@ -122,7 +123,7 @@ class Trajectory:
         return self.sim_data
 
     @staticmethod
-    def traverse_trajectory(x_t: int, y_t: int, d_travel: int, traj):
+    def traverse_trajectory(x_t: float, y_t: float, d_travel: float, traj):
         """
         method for traversing along trajectory, travels d_travel distance along given trajectory traj
 
@@ -143,7 +144,7 @@ class Trajectory:
         return Trajectory.traverse_trajectory(traj[0, 0], traj[0, 1], (d_travel - d_to_traj), traj[1:])
 
     @staticmethod
-    def distance(x_0: int, y_0: int, x_1: int, y_1: int):
+    def distance(x_0: float, y_0: float, x_1: float, y_1: float):
         """
         calculate euclidean distance between points
         """
@@ -159,10 +160,13 @@ def main():
 
     t1 = Trajectory(pdf.iloc[0], l_df, l_xy, clf)
     t2 = Trajectory(pdf.iloc[1], l_df, l_xy, clf)
+    t1.init_sim(0, 0)
     t2.init_sim(0, 0)
     for frame in range(10, 100, 10):
         t1.step(frame)
         t2.step(frame)
+    print(t1.full_sim_data)
+    print(t2.full_sim_data)
 
 
 if __name__ == '__main__':

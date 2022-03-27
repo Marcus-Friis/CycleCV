@@ -57,7 +57,7 @@ class LSTMModel(nn.Module):
         # Fully connected layer
         self.fc = nn.Linear(hidden_dim, output_dim)
 
-    def forward(self, x):
+    def _forward_traj(self, x):
         # Initializing hidden state for first input with zeros
         h0 = torch.zeros(self.layer_dim, x.size(0), self.hidden_dim).requires_grad_()
 
@@ -75,6 +75,20 @@ class LSTMModel(nn.Module):
 
         # Convert the final state to our desired output shape (batch_size, output_dim)
         out = self.fc(out)
+
+        return out
+
+    def forward(self, x):
+        out = torch.Tensor([[]]).view(-1, 2)
+        print(x)
+        ids = torch.unique(x[:, 0])
+        for id in ids:
+            mask = x[:, 0] == id
+            x_id = x[mask, 1:]
+
+            print(x_id.shape)
+            o = self._forward_traj(x_id)
+            out = torch.concat((out, o))
 
         return out
 
@@ -122,20 +136,20 @@ def get_model(model, model_params):
 
 
 class Optimization:
-    def __init__(self, model, loss_fn, optimizer, device='cpu'):
+    def __init__(self, model, loss_fn, optimizer):
         self.model = model
         self.loss_fn = loss_fn
         self.optimizer = optimizer
         self.train_losses = []
         self.val_losses = []
-        self.device = device
-    
+        self.device = 'cpu'
+
     def train_step(self, x, y):
         # Sets model to train mode
         self.model.train()
 
         # Makes predictions
-        yhat = self.model(x).to(self.device)
+        yhat = self.model(x)
 
         # Computes loss
         loss = self.loss_fn(y, yhat)
@@ -156,7 +170,8 @@ class Optimization:
         for epoch in range(1, n_epochs + 1):
             batch_losses = []
             for x_batch, y_batch in train_loader:
-                x_batch = x_batch.view([batch_size, -1, n_features]).to(self.device)
+                self.model.train()
+                x_batch = x_batch.view([-1, n_features]).to(self.device)#.view([batch_size, -1, n_features]).to(self.device)
                 y_batch = y_batch.to(self.device)
                 loss = self.train_step(x_batch, y_batch)
                 batch_losses.append(loss)
@@ -166,7 +181,7 @@ class Optimization:
             with torch.no_grad():
                 batch_val_losses = []
                 for x_val, y_val in val_loader:
-                    x_val = x_val.view([batch_size, -1, n_features]).to(self.device)
+                    x_val = x_val.view([-1, n_features]).to(self.device)#.view([batch_size, -1, n_features]).to(self.device)
                     y_val = y_val.to(self.device)
                     self.model.eval()
                     yhat = self.model(x_val)

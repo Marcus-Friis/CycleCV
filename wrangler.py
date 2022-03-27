@@ -1,4 +1,5 @@
 import pickle
+
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import OneHotEncoder
@@ -101,7 +102,7 @@ class Wrangler:
             'dir_2': [],
             'frames': [],
             'cluster': [],
-            'light_index' : [],
+            'light_index': [],
             'class': [],
             'light_color': [],
             'direction': []
