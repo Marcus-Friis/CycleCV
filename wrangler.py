@@ -120,56 +120,60 @@ class Wrangler:
         for i, n in enumerate(classes):
             d['c_' + str(i)] = []
 
-        for _, row in self.df.iterrows():
-            rowx = np.array(row['xs'][::step_size])
-            rowy = np.array(row['ys'][::step_size])
-            frames = np.array(row['frames'][::step_size][:-1])
-            l_mid = self._get_mid(self.l_xy[self.light_dict[row['cluster']]])
+        try:
+            for _, row in self.df.iterrows():
+                rowx = np.array(row['xs'][::step_size])
+                rowy = np.array(row['ys'][::step_size])
+                frames = np.array(row['frames'][::step_size][:-1])
+                l_mid = self._get_mid(self.l_xy[self.light_dict[row['cluster']]])
 
-            encoding = c_enc.transform([[row['class']]]).toarray()
-            for i in range(classes.shape[0]):
-                d['c_'+str(i)].append(encoding[0, i])
+                l_color = np.array([self.l_df.loc[f][str(self.light_dict[row['cluster']])] for f in frames])
 
-            d['x'].append(rowx[:-1])
-            d['y'].append(rowy[:-1])
-            l_color = np.array([self.l_df.loc[f][str(self.light_dict[row['cluster']])] for f in frames])
-            d['light_index'].append(self.light_dict[row['cluster']])
-            d['light_color'].append(l_color)
-            d['d_light'].append(self._d2l(rowx[:-1], rowy[:-1], l_mid))
-            encoding = l_enc.transform(l_color.reshape(-1, 1)).toarray()
-            for n in range(4):
-                d['l' + str(n)].append(encoding[:, n])
+                encoding = c_enc.transform([[row['class']]]).toarray()
+                for i in range(classes.shape[0]):
+                    d['c_' + str(i)].append(encoding[0, i])
 
-            eucs = self._euc(rowx, rowy)
-            d['euc'].append(eucs)
-            d['frames'].append(frames)
-            d['class'].append(row['class'])
-            d['cluster'].append(row['cluster'])
-            direction = self.direction_dict[row['cluster']]
-            d['direction'].append(direction)
-            encoding = d_enc.transform([[direction]]).toarray()
-            for n in range(3):
-                d['dir_' + str(n)].append([encoding[0, n]]*len(rowx-1))
+                d['x'].append(rowx[:-1])
+                d['y'].append(rowy[:-1])
+                d['light_index'].append(self.light_dict[row['cluster']])
+                d['light_color'].append(l_color)
+                d['d_light'].append(self._d2l(rowx[:-1], rowy[:-1], l_mid))
+                encoding = l_enc.transform(l_color.reshape(-1, 1)).toarray()
+                for n in range(4):
+                    d['l' + str(n)].append(encoding[:, n])
 
-            d_t1 = []
-            d_t2 = []
-            d_t3 = []
-            for i in range(len(rowx) - 1):
-                if i >= 1:
-                    d_t1.append(eucs[i - 1])
-                else:
-                    d_t1.append(0)
-                if i >= 2:
-                    d_t2.append(eucs[i - 2])
-                else:
-                    d_t2.append(0)
-                if i >= 3:
-                    d_t3.append(eucs[i - 3])
-                else:
-                    d_t3.append(0)
-            d['d_t-1'].append(d_t1)
-            d['d_t-2'].append(d_t2)
-            d['d_t-3'].append(d_t3)
+                eucs = self._euc(rowx, rowy)
+                d['euc'].append(eucs)
+                d['frames'].append(frames)
+                d['class'].append(row['class'])
+                d['cluster'].append(row['cluster'])
+                direction = self.direction_dict[row['cluster']]
+                d['direction'].append(direction)
+                encoding = d_enc.transform([[direction]]).toarray()
+                for n in range(3):
+                    d['dir_' + str(n)].append([encoding[0, n]]*len(rowx-1))
+
+                d_t1 = []
+                d_t2 = []
+                d_t3 = []
+                for i in range(len(rowx) - 1):
+                    if i >= 1:
+                        d_t1.append(eucs[i - 1])
+                    else:
+                        d_t1.append(0)
+                    if i >= 2:
+                        d_t2.append(eucs[i - 2])
+                    else:
+                        d_t2.append(0)
+                    if i >= 3:
+                        d_t3.append(eucs[i - 3])
+                    else:
+                        d_t3.append(0)
+                d['d_t-1'].append(d_t1)
+                d['d_t-2'].append(d_t2)
+                d['d_t-3'].append(d_t3)
+        except KeyError:
+            print('wrangling ended early due to KeyError')
 
         self.pdf = pd.DataFrame(d)
 
@@ -181,7 +185,7 @@ class Wrangler:
 
         return self
 
-    def load_pdf(self, path: str):
+    def load_pdf(self, path: str = 'data/pdf.pkl'):
         """
         load pdf instead of running init_attributes
 
