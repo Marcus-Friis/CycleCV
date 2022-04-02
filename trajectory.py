@@ -27,6 +27,7 @@ class Trajectory(ABC):
         # trajectory variables for full trajectory and remaining when simulating
         self.traj_full = np.array([data['x'], data['y']]).T
         self.traj_rest = self.traj_full[1:]
+        self.xy_hist = []
 
         # variables for getting relevant light info
         self.light_index = int(self.data['light_index'])
@@ -47,6 +48,7 @@ class Trajectory(ABC):
         :return: DataFrame, ready to simulate
         """
         d = {'x': self.data['x'][i], 'y': self.data['y'][i]}  # init xy coordinate
+        self.xy_hist.append([self.data['x'][i], self.data['y'][i]])
 
         # init previous distances and save in hist of distances
         for n in ['1', '2', '3']:
@@ -102,6 +104,7 @@ class Trajectory(ABC):
                                                         d_travel, self.traj_rest)
         d['x'] = x
         d['y'] = y
+        self.xy_hist.append([x, y])
 
         # assign previous distances from dist hist
         for n in range(1, 4):

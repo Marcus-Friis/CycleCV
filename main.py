@@ -29,6 +29,8 @@ def main():
         df_frames = Wrangler.load_pickle('bsc-3m/traj_01_elab_new.pkl')
         df = df.join(df_frames['frames'])
 
+        all_df = Wrangler.get_all_df(df, dump=True, path='data/all_df.pkl')
+
         # load traffic lights coordinates and color info
         l_xy = Wrangler.load_pickle('bsc-3m/signal_lines_true.pickle')
         l_df = pd.read_csv('bsc-3m/signals_dense.csv')
@@ -54,7 +56,8 @@ def main():
         # wrangle data into shape
         print('wrangling data...')
         wr = Wrangler(fdf, l_xy, l_df)\
-            .init_attributes(step_size=config.getint('step_size'), dump=config.getboolean('dump_data'), path=config['data_path']+'pdf.pkl')\
+            .init_attributes(all_df, step_size=config.getint('step_size'), dump=config.getboolean('dump_data'),
+                             path=config['data_path']+'pdf.pkl')\
             .get_nndf(dump=config.getboolean('dump_data'), path=config['data_path']+'nndf.pkl')
         nndf = wr.nndf
 

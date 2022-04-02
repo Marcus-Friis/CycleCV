@@ -6,6 +6,7 @@ import pandas as pd
 from sklearn.preprocessing import OneHotEncoder
 
 from clustering_helper_funcs import get_hyperparameters, detect_outliers
+from shape_helper_funcs import normalize, get_polygons, rotate
 
 
 class Wrangler:
@@ -77,12 +78,48 @@ class Wrangler:
         v = np.vstack((x, y)).T
         return np.linalg.norm(v - mid, axis=1)
 
-    def init_attributes(self, step_size: int = 1, dump: bool = False, path: str = None):
+    @staticmethod
+    def get_all_df(df, dump: bool = True, path: str = None):
+        """
+        get DataFrame with positions of all objects to each frame
+
+        :param path: path to save location
+        :param dump: bool - save file
+        :return: all_df
+        """
+        d = {
+            'x': [],
+            'y': [],
+            'frame': [],
+            'class': [],
+            'id': []
+        }
+
+        for _, row in df.iterrows():
+            for i in range(len(row['xs'])):
+                d['x'].append(row['xs'][i])
+                d['y'].append(row['ys'][i])
+                d['frame'].append(row['frames'][i])
+                d['class'].append(row['class'])
+                d['id'].append(row['id'])
+        all_df = pd.DataFrame(d)
+
+        if dump:
+            if path is None:
+                Wrangler.dump_pickle(all_df, 'alL_df.pkl')
+            else:
+                Wrangler.dump_pickle(all_df, path)
+
+        return all_df
+
+    def init_attributes(self, all_df, step_size: int = 1, num_zones: int = 20, dump: bool = False, path: str = None):
         """
         wrangle data and calculate various attributes from DataFrame,
         must be done before other wrangling,
         can also be loaded with load_pdf
 
+        :param all_df: DataFrame of all xy for all objects to each frame
+        :param num_zones: int, number of fields of vision
         :param path: path to save location
         :param dump: bool - save file
         :param step_size: use every step_size frames
@@ -105,6 +142,7 @@ class Wrangler:
             'dir_2': [],
             'frames': [],
             'cluster': [],
+            'id': [],
             'light_index': [],
             'class': [],
             'light_color': [],
@@ -119,6 +157,9 @@ class Wrangler:
 
         for i, n in enumerate(classes):
             d['c_' + str(i)] = []
+
+        for i in range(num_zones):
+            d['zone_' + str(i)] = []
 
         try:
             for _, row in self.df.iterrows():
@@ -135,6 +176,7 @@ class Wrangler:
 
                 d['x'].append(rowx[:-1])
                 d['y'].append(rowy[:-1])
+                d['id'] = row['id']
                 d['light_index'].append(self.light_dict[row['cluster']])
                 d['light_color'].append(l_color)
                 d['d_light'].append(self._d2l(rowx[:-1], rowy[:-1], l_mid))
@@ -172,6 +214,25 @@ class Wrangler:
                 d['d_t-1'].append(d_t1)
                 d['d_t-2'].append(d_t2)
                 d['d_t-3'].append(d_t3)
+
+                all_polygons = []
+                for i in range(len(rowx) - 1):
+                    v1 = np.array([rowx[i], rowy[i]])
+                    v_next = np.array([rowx[i+1], rowy[i+1]])
+                    try:
+                        count = 1
+                        while np.all(v1 == v_next):
+                            v_next = np.array([rowx[i+1+count], rowy[i+1+count]])
+                            count += 1
+                        polygons = get_polygons(v1, v_next, num_zones)
+                        all_polygons.append(polygons)
+                    except IndexError:
+                        all_polygons.append(polygons)
+
+                all_polygons = np.array(all_polygons)
+                for i in range(num_zones):
+                    d['zone_' + str(i)].append(all_polygons[:, i])
+
         except KeyError:
             print('wrangling ended early due to KeyError')
 
@@ -306,6 +367,8 @@ def main():
     df_frames = Wrangler.load_pickle('bsc-3m/traj_01_elab_new.pkl')
     df = df.join(df_frames['frames'])
 
+    all_df = Wrangler.get_all_df(df, dump=True, path='data/all_df.pkl')
+
     # load traffic lights coordinates and color info
     l_xy = Wrangler.load_pickle('bsc-3m/signal_lines_true.pickle')
     l_df = pd.read_csv('bsc-3m/signals_dense.csv')
@@ -329,8 +392,7 @@ def main():
 
     # wrangle data into shape
     wr = Wrangler(fdf, l_xy, l_df) \
-        .init_attributes(step_size=1, dump=True,
-                         path='data/pdf.pkl') \
+        .init_attributes(all_df, step_size=1, dump=True, path='data/pdf.pkl') \
         .get_nndf(dump=True, path='data/nndf.pkl')
 
 
