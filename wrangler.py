@@ -3,6 +3,7 @@ import pickle
 import hdbscan
 import numpy as np
 import pandas as pd
+from shapely.geometry import Point
 from sklearn.preprocessing import OneHotEncoder
 
 from clustering_helper_funcs import get_hyperparameters, detect_outliers
@@ -159,10 +160,12 @@ class Wrangler:
             d['c_' + str(i)] = []
 
         for i in range(num_zones):
+            d['d_zone_' + str(i)] = []
             d['zone_' + str(i)] = []
 
         try:
-            for _, row in self.df.iterrows():
+            for df_index, row in self.df.iterrows():
+                print(df_index)
                 rowx = np.array(row['xs'][::step_size])
                 rowy = np.array(row['ys'][::step_size])
                 frames = np.array(row['frames'][::step_size][:-1])
@@ -232,6 +235,23 @@ class Wrangler:
                 all_polygons = np.array(all_polygons)
                 for i in range(num_zones):
                     d['zone_' + str(i)].append(all_polygons[:, i])
+
+                for z in range(num_zones):
+                    d_zone_hist = []
+                    for i, frame in enumerate(frames):
+                        zone = all_polygons[i, z]
+                        p = Point([rowx[i], rowy[i]])
+                        mask = all_df['frame'] == frame
+                        d_in_zone = []
+                        for _, xy in all_df[mask][['x', 'y']].iterrows():
+                            pz = Point([xy['x'], xy['y']])
+                            if zone.contains(pz):
+                                d_in_zone.append(p.distance(pz))
+                        try:
+                            d_zone_hist.append(min(d_in_zone))
+                        except ValueError:
+                            d_zone_hist.append(1000)
+                    d['d_zone_' + str(z)].append(d_zone_hist)
 
         except KeyError:
             print('wrangling ended early due to KeyError')
@@ -367,7 +387,8 @@ def main():
     df_frames = Wrangler.load_pickle('bsc-3m/traj_01_elab_new.pkl')
     df = df.join(df_frames['frames'])
 
-    all_df = Wrangler.get_all_df(df, dump=True, path='data/all_df.pkl')
+    # all_df = Wrangler.get_all_df(df, dump=True, path='data/all_df.pkl')
+    all_df = Wrangler.load_pickle('data/all_df.pkl')
 
     # load traffic lights coordinates and color info
     l_xy = Wrangler.load_pickle('bsc-3m/signal_lines_true.pickle')
@@ -392,8 +413,8 @@ def main():
 
     # wrangle data into shape
     wr = Wrangler(fdf, l_xy, l_df) \
-        .init_attributes(all_df, step_size=1, dump=True, path='data/pdf.pkl') \
-        .get_nndf(dump=True, path='data/nndf.pkl')
+        .init_attributes(all_df, step_size=5, dump=True, path='data/pdf_zone_complete.pkl') \
+        #.get_nndf(dump=True, path='data/nndf.pkl')
 
 
 if __name__ == '__main__':
