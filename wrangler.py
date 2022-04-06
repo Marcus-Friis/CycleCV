@@ -3,7 +3,7 @@ import pickle
 import hdbscan
 import numpy as np
 import pandas as pd
-from shapely.geometry import Point
+from shapely.geometry import Point, Polygon
 from sklearn.preprocessing import OneHotEncoder
 
 from clustering_helper_funcs import get_hyperparameters, detect_outliers
@@ -84,6 +84,7 @@ class Wrangler:
         """
         get DataFrame with positions of all objects to each frame
 
+        :param df: DataFrame to extract data from
         :param path: path to save location
         :param dump: bool - save file
         :return: all_df
@@ -112,6 +113,30 @@ class Wrangler:
                 Wrangler.dump_pickle(all_df, path)
 
         return all_df
+
+    @staticmethod
+    def cut_ends(df, poly, threshold=50):
+        cols = ['id', 'class', 'xs', 'ys', 'frames', 'x0', 'y0', 'x1', 'y1']
+        d = {c: [] for c in cols}
+        for _, row in df.loc[df['class'] == 'Car'].iterrows():
+            in_list = []
+            for i, (x, y) in enumerate(zip(row['xs'], row['ys'])):
+                p = Point([x, y])
+                if poly.contains(p):
+                    in_list.append(i)
+            if len(in_list) > threshold:
+                d['id'].append(row['id'])
+                d['class'].append(row['class'])
+                xs = [row['xs'][i] for i in in_list]
+                ys = [row['ys'][i] for i in in_list]
+                d['xs'].append(xs)
+                d['ys'].append(ys)
+                d['frames'].append([row['frames'][i] for i in in_list])
+                d['x0'].append(xs[0])
+                d['x1'].append(xs[-1])
+                d['y0'].append(ys[0])
+                d['y1'].append(ys[-1])
+        return pd.DataFrame(d)
 
     def init_attributes(self, all_df, step_size: int = 1, num_zones: int = 20, dump: bool = False, path: str = None):
         """
@@ -160,11 +185,11 @@ class Wrangler:
             d['c_' + str(i)] = []
 
         for i in range(num_zones):
-            d['d_zone_' + str(i)] = []
+            # d['d_zone_' + str(i)] = []
             d['zone_' + str(i)] = []
 
-        try:
-            for df_index, row in self.df.iterrows():
+        for df_index, row in self.df.iterrows():
+            try:
                 print(df_index)
                 rowx = np.array(row['xs'][::step_size])
                 rowy = np.array(row['ys'][::step_size])
@@ -177,10 +202,10 @@ class Wrangler:
                 for i in range(classes.shape[0]):
                     d['c_' + str(i)].append(encoding[0, i])
 
+                d['light_index'].append(self.light_dict[row['cluster']])
                 d['x'].append(rowx[:-1])
                 d['y'].append(rowy[:-1])
                 d['id'] = row['id']
-                d['light_index'].append(self.light_dict[row['cluster']])
                 d['light_color'].append(l_color)
                 d['d_light'].append(self._d2l(rowx[:-1], rowy[:-1], l_mid))
                 encoding = l_enc.transform(l_color.reshape(-1, 1)).toarray()
@@ -233,28 +258,29 @@ class Wrangler:
                         all_polygons.append(polygons)
 
                 all_polygons = np.array(all_polygons)
+
                 for i in range(num_zones):
                     d['zone_' + str(i)].append(all_polygons[:, i])
 
-                for z in range(num_zones):
-                    d_zone_hist = []
-                    for i, frame in enumerate(frames):
-                        zone = all_polygons[i, z]
-                        p = Point([rowx[i], rowy[i]])
-                        mask = all_df['frame'] == frame
-                        d_in_zone = []
-                        for _, xy in all_df[mask][['x', 'y']].iterrows():
-                            pz = Point([xy['x'], xy['y']])
-                            if zone.contains(pz):
-                                d_in_zone.append(p.distance(pz))
-                        try:
-                            d_zone_hist.append(min(d_in_zone))
-                        except ValueError:
-                            d_zone_hist.append(1000)
-                    d['d_zone_' + str(z)].append(d_zone_hist)
+                # for z in range(num_zones):
+                #     d_zone_hist = []
+                #     for i, frame in enumerate(frames):
+                #         zone = all_polygons[i, z]
+                #         p = Point([rowx[i], rowy[i]])
+                #         mask = all_df['frame'] == frame
+                #         d_in_zone = []
+                #         for _, xy in all_df[mask][['x', 'y']].iterrows():
+                #             pz = Point([xy['x'], xy['y']])
+                #             if zone.contains(pz):
+                #                 d_in_zone.append(p.distance(pz))
+                #         try:
+                #             d_zone_hist.append(min(d_in_zone))
+                #         except ValueError:
+                #             d_zone_hist.append(1000)
+                #     d['d_zone_' + str(z)].append(d_zone_hist)
 
-        except KeyError:
-            print('wrangling ended early due to KeyError')
+            except KeyError:
+                continue
 
         self.pdf = pd.DataFrame(d)
 
@@ -397,6 +423,14 @@ def main():
     # select strictly cars, remove later?
     df, _ = Wrangler.filter_class(df, ['Car'])
 
+    # cut ends
+    points = [
+        Point([650, 100]), Point([850, 200]), Point([1050, 100]), Point([1200, 200]), Point([1100, 450]),
+        Point([1025, 525]), Point([550, 600]), Point([400, 600]), Point([100, 550]), Point([100, 475]), Point([60, 350])
+    ]
+    poly = Polygon(points)
+    df = Wrangler.cut_ends(df, poly)
+
     # cluster and remove outliers
     # HDBSCAN for now, try other in future?
     min_cluster_size, min_samples, cluster_selection_epsilon = get_hyperparameters('Car', '')
@@ -413,7 +447,7 @@ def main():
 
     # wrangle data into shape
     wr = Wrangler(fdf, l_xy, l_df) \
-        .init_attributes(all_df, step_size=5, dump=True, path='data/pdf_zone_complete.pkl') \
+        .init_attributes(all_df, step_size=5, dump=True, path='data/pdf_zones.pkl') \
         #.get_nndf(dump=True, path='data/nndf.pkl')
 
 

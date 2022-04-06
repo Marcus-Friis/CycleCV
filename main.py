@@ -8,6 +8,7 @@ from PIL import Image, ImageOps
 import seaborn as sns
 
 import hdbscan
+from shapely.geometry import Point, Polygon
 
 from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPRegressor
@@ -37,6 +38,15 @@ def main():
 
         # select strictly cars, remove later?
         df, _ = Wrangler.filter_class(df, ['Car'])
+
+        # cut ends
+        points = [
+            Point([650, 100]), Point([850, 200]), Point([1050, 100]), Point([1200, 200]), Point([1100, 450]),
+            Point([1025, 525]), Point([550, 600]), Point([400, 600]), Point([100, 550]), Point([100, 475]),
+            Point([60, 350])
+        ]
+        poly = Polygon(points)
+        df = Wrangler.cut_ends(df, poly)
 
         # cluster and remove outliers
         # HDBSCAN for now, try other in future?
