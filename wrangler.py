@@ -93,7 +93,7 @@ class Wrangler:
         d = {
             'x': [],
             'y': [],
-            'point': [],
+        #     'point': [],
             'frame': [],
             'class': [],
             'id': []
@@ -103,12 +103,14 @@ class Wrangler:
             for i in range(len(row['xs'])):
                 d['x'].append(row['xs'][i])
                 d['y'].append(row['ys'][i])
-                d['point'].append(Point([row['xs'][i], row['ys'][i]]))
+                # d['point'].append(Point([row['xs'][i], row['ys'][i]]))
                 d['frame'].append(row['frames'][i])
                 d['class'].append(row['class'])
                 d['id'].append(row['id'])
 
-        all_df = gdp.GeoDataFrame(d)
+        all_df = pd.DataFrame(d)
+        # all_df = gpd.GeoDataFrame(d)
+        # all_df = all_df.set_geometry('point')
 
         if dump:
             if path is None:
@@ -266,38 +268,26 @@ class Wrangler:
                 for i in range(num_zones):
                     d['zone_' + str(i)].append(all_polygons[:, i])
 
-                for z in range(num_zones):
-                    d_zone_hist = []
-                    for i, frame in enumerate(frames):
-                        zone = all_polygons[i, z]
-                        p = Point([rowx[i], rowy[i]])
-                        mask = all_df['frame'] == frame
-                        d_in_zone = []
-                        for _, xy in all_df[mask][['x', 'y']].iterrows():
-                            pz = Point([xy['x'], xy['y']])
-                            if zone.contains(pz):
-                                d_in_zone.append(p.distance(pz))
-                        try:
-                            d_zone_hist.append(min(d_in_zone))
-                        except ValueError:
-                            d_zone_hist.append(1000)
-                    d['d_zone_' + str(z)].append(d_zone_hist)
-                
+                d_zone = [[] for _ in range(num_zones)]
                 for i, frame in enumerate(frames):
                     p = Point([rowx[i], rowy[i]])
-                    mask = all_df[frame] == frame
+                    all_df_f = all_df.loc[all_df['frame'] == frame]
                     for z in range(num_zones):
                         zone = all_polygons[i, z]
-                        for _, xy in all_df[mask][['x', 'y']].iterrows():
+                        d_f = [[] for _ in range(num_zones)]
+                        for _, xy in all_df_f.iterrows():
                             pz = Point([xy['x'], xy['y']])
-                        
+                            if zone.contains(pz):
+                                d_f[z].append(p.distance(pz))
+                        try:
+                            d_zone[z].append(min(d_f[z]))
+                        except ValueError:
+                            d_zone[z].append(1000)
+                for z in range(num_zones):
+                    d['d_zone_' + str(z)].append(d_zone[z])
 
-
-
-                break
-            except KeyError:
+            except RuntimeError:
                 continue
-            
 
         self.pdf = pd.DataFrame(d)
 
@@ -430,10 +420,9 @@ def main():
     df_frames = Wrangler.load_pickle('bsc-3m/traj_01_elab_new.pkl')
     df = df.join(df_frames['frames'])
 
-    all_df = Wrangler.get_all_df(df, dump=True, path='data/all_df.pkl')
-    # all_df = Wrangler.load_pickle('data/all_df.pkl')
+    # all_df = Wrangler.get_all_df(df, dump=True, path='data/all_df.pkl')
+    all_df = Wrangler.load_pickle('data/all_df.pkl')
 
-    """
     # load traffic lights coordinates and color info
     l_xy = Wrangler.load_pickle('bsc-3m/signal_lines_true.pickle')
     l_df = pd.read_csv('bsc-3m/signals_dense.csv')
@@ -447,7 +436,7 @@ def main():
         Point([1025, 525]), Point([550, 600]), Point([400, 600]), Point([100, 550]), Point([100, 475]), Point([60, 350])
     ]
     poly = Polygon(points)
-    # df = Wrangler.cut_ends(df, poly)
+    df = Wrangler.cut_ends(df, poly)
 
     # cluster and remove outliers
     # HDBSCAN for now, try other in future?
@@ -467,7 +456,7 @@ def main():
     wr = Wrangler(fdf, l_xy, l_df) \
         .init_attributes(all_df, step_size=5, dump=True, path='data/pdf_zones.pkl') \
         #.get_nndf(dump=True, path='data/nndf.pkl')
-"""
+
 
 if __name__ == '__main__':
     main()
