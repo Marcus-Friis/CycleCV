@@ -309,11 +309,12 @@ class Wrangler:
         self.pdf = self.load_pickle(path)
         return self
 
-    def get_nndf(self, dump: bool = False, path: str = None):
+    def get_nndf(self, num_zones: int = 20, dump: bool = False, path: str = None):
         """
         get data formatted for training neural networks,
         must run init_attributes or load_pdf before this method
 
+        :param num_zones: int, number of zones in pdf
         :param dump: save file
         :param path: path to file
         :return: nndf
@@ -342,6 +343,14 @@ class Wrangler:
             'target': []
         }
 
+        classes = np.unique(self.df['class']).reshape(-1, 1)
+        for i, n in enumerate(classes):
+            d['c_' + str(i)] = []
+
+        for i in range(num_zones):
+            d['d_zone_' + str(i)] = []
+            d['zone_' + str(i)] = []
+
         for index, row in self.pdf.iterrows():
             for i in range(3, len(row['x'])):
                 d['index'].append(index)
@@ -362,9 +371,12 @@ class Wrangler:
                 for n in range(3):
                     d['dir_' + str(n)].append(row['dir_' + str(n)][i])
 
-                # d['traj_x'].append(row['x'][i:])
-                # d['traj_y'].append(row['y'][i:])
-                # d['traj_frames'].append(row['frames'][i:])
+                for n in range(len(classes)):
+                    d['c_' + str(n)].append(row['c_' + str(n)])
+
+                for n in range(num_zones):
+                    d['d_zone_' + str(n)].append(row['d_zone_' + str(n)][i])
+                    d['zone_' + str(n)].append(row['zone_' + str(n)][i])
 
         self.nndf = pd.DataFrame(d)
 
@@ -454,8 +466,11 @@ def main():
     print('start')
     # wrangle data into shape
     wr = Wrangler(fdf, l_xy, l_df) \
-        .init_attributes(all_df, step_size=5, dump=True, path='data/pdf_zones.pkl') \
-        #.get_nndf(dump=True, path='data/nndf.pkl')
+        .load_pdf('data/pdf_zones.pkl') \
+        .get_nndf(dump=True, path='data/nndf.pkl')
+    # wr = Wrangler(fdf, l_xy, l_df) \
+    #     .init_attributes(all_df, step_size=5, dump=True, path='data/pdf_zones.pkl') \
+    #     .get_nndf(dump=True, path='data/nndf.pkl')
 
 
 if __name__ == '__main__':
