@@ -1,15 +1,21 @@
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import OneHotEncoder
-from abc import ABC, abstractmethod
+
+import itertools
+from shape_helper_funcs import *
+from wrangler import Wrangler
 
 
-class Trajectory(ABC):
-    full_sim_data = pd.DataFrame(columns=['x', 'y', 'd_t-1', 'd_t-2', 'd_t-3', 'd_light', 'l0', 'l1',
-                                          'l2', 'l3', 'dir_0', 'dir_1', 'dir_2', 'frame', 'class'])
+class Trajectory:
+    full_sim_data_cols = ['index', 'x', 'y', 'd_t-1', 'd_t-2', 'd_t-3', 'd_light', 'l0', 'l1',
+                          'l2', 'l3', 'dir_0', 'dir_1', 'dir_2', 'frame', 'class'] \
+                         + ['d_z_'+str(i) for i in range(20)] + ['z_'+str(i) for i in range(20)]
+    full_sim_data = pd.DataFrame(columns=full_sim_data_cols)
     l_enc = OneHotEncoder(handle_unknown='ignore').fit(np.array([[0, 1, 2, 3]]).reshape(-1, 1))
+    index_gen = itertools.count()
 
-    def __init__(self, data, l_df, l_xy, clf):
+    def __init__(self, data, l_df, l_xy):
         """
         class for simulating trajectories
 
@@ -22,7 +28,6 @@ class Trajectory(ABC):
         self.data = data
         self.l_df = l_df
         self.l_xy = l_xy
-        self.clf = clf
 
         # trajectory variables for full trajectory and remaining when simulating
         self.traj_full = np.array([data['x'], data['y']]).T
@@ -38,6 +43,7 @@ class Trajectory(ABC):
         self.sim_data = None
         self.distances = []
         self.c = self.data['class']
+        self.index = next(Trajectory.index_gen)
 
     def init_sim(self, frame: int, i: int = 0):
         """
@@ -47,7 +53,7 @@ class Trajectory(ABC):
         :param i: int, which index to start from
         :return: DataFrame, ready to simulate
         """
-        d = {'x': self.data['x'][i], 'y': self.data['y'][i]}  # init xy coordinate
+        d = {'index': self.index, 'x': self.data['x'][i], 'y': self.data['y'][i]}  # init index and xy coordinate
         self.xy_hist.append([self.data['x'][i], self.data['y'][i]])
 
         # init previous distances and save in hist of distances
@@ -73,14 +79,53 @@ class Trajectory(ABC):
         d['frame'] = [frame]
         d['class'] = [self.c]
 
+        # init zone cols
+        for i in range(20):
+            d['d_z_'+str(i)] = [np.nan]
+        for i in range(20):
+            d['z_'+str(i)] = [np.nan]
+
         # save data, add to DataFrame of all data
         self.sim_data = pd.DataFrame(d)
         Trajectory.full_sim_data = pd.concat((Trajectory.full_sim_data, self.sim_data))
         return self.sim_data
 
-    @abstractmethod
+    def get_d_zones(self, frame):
+        # zones
+        mask = self.sim_data['frame'] == frame
+        v1 = self.sim_data.loc[mask][['x', 'y']].to_numpy()[0]
+        v_next = self.traj_rest[0]
+        poly = get_polygons(v1, v_next, 20)
+
+        mask = (Trajectory.full_sim_data['index'] != self.index) & (Trajectory.full_sim_data['frame'] == frame)
+        all_df = Trajectory.full_sim_data.loc[mask]
+
+        p = Point(v1)
+        d_zone = []
+        for z in range(len(poly)):
+            zone = poly[z]
+            distances = [[] for _ in range(len(poly))]
+            for _, xy in all_df.iterrows():
+                pz = Point([xy['x'], xy['y']])
+                if zone.contains(pz):
+                    distances[z].append(p.distance(pz))
+            try:
+                d_zone.append(min(distances[z]))
+            except ValueError:
+                d_zone.append(1000)
+
+        mask = self.sim_data['frame'] == frame
+        self.sim_data.loc[mask, ['z_' + str(i) for i in range(20)]] = poly
+        self.sim_data.loc[mask, ['d_z_' + str(i) for i in range(20)]] = d_zone
+
+        mask = (Trajectory.full_sim_data['frame'] == frame) & (Trajectory.full_sim_data['index'] == self.index)
+        Trajectory.full_sim_data.loc[mask, ['z_' + str(i) for i in range(20)]] = poly
+        Trajectory.full_sim_data.loc[mask, ['d_z_' + str(i) for i in range(20)]] = d_zone
+
+        return self.sim_data
+
     def predict(self):
-        pass
+        return 10
 
     def step(self, frame: int, i: int = -1):
         """
@@ -94,7 +139,7 @@ class Trajectory(ABC):
             raise RuntimeError('sim_data not initialized')
 
         d = {}
-        cols = ['x', 'y', 'd_t-1', 'd_t-2', 'd_t-3', 'd_light', 'l0', 'l1',
+        cols = ['index', 'x', 'y', 'd_t-1', 'd_t-2', 'd_t-3', 'd_light', 'l0', 'l1',
                 'l2', 'l3', 'dir_0', 'dir_1', 'dir_2']
 
         # calculate distance, get xy and update traj_rest
@@ -102,6 +147,7 @@ class Trajectory(ABC):
         self.distances.append(d_travel)
         x, y, self.traj_rest = self.traverse_trajectory(self.sim_data['x'].iloc[i], self.sim_data['y'].iloc[i],
                                                         d_travel, self.traj_rest)
+        d['index'] = self.index
         d['x'] = x
         d['y'] = y
         self.xy_hist.append([x, y])
@@ -158,10 +204,21 @@ class Trajectory(ABC):
         """
         return np.linalg.norm(np.array([x_0, y_0]) - np.array([x_1, y_1]))
 
-
-def main():
-    pass
+    @staticmethod
+    def reset_full_sim_data():
+        Trajectory.full_sim_data = pd.DataFrame(columns=Trajectory.full_sim_data_cols)
 
 
 if __name__ == '__main__':
-    main()
+    # nndf = Wrangler.load_pickle('data/nndf.pkl')
+    pdf = Wrangler.load_pickle('data/pdf_zones.pkl')
+    l_xy = Wrangler.load_pickle('bsc-3m/signal_lines_true.pickle')
+    l_df = pd.read_csv('bsc-3m/signals_dense.csv')
+
+    t = Trajectory(pdf.iloc[0], l_df, l_xy, 0)
+    t.init_sim(0)
+    print(t.sim_data)
+    t.get_d_zones(0)
+    print(t.sim_data)
+    print(t.full_sim_data)
+    # t.get_d_zones(0)

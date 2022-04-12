@@ -10,6 +10,10 @@ from pytrajectory import PyTrajectory
 
 
 class SKTrajectory(Trajectory):
+    def __init__(self, data, l_df, l_xy, clf):
+        super(SKTrajectory, self).__init__(data, l_df, l_xy)
+        self.clf = clf
+
     def predict(self):
         """
         overrides method of superclass, used for predicting distance.
@@ -17,11 +21,12 @@ class SKTrajectory(Trajectory):
 
         :return: float, euclidean distance
         """
-        cols = ['x', 'y', 'd_t-1', 'd_t-2', 'd_t-3', 'd_light', 'l0', 'l1',
-                'l2', 'l3', 'dir_0', 'dir_1', 'dir_2']
-        x_predict = self.sim_data[cols].iloc[-1].to_numpy().reshape(1, -1)
-        d_travel = self.clf.predict(x_predict)[0]
-        return d_travel
+        # cols = ['x', 'y', 'd_t-1', 'd_t-2', 'd_t-3', 'd_light', 'l0', 'l1',
+        #         'l2', 'l3', 'dir_0', 'dir_1', 'dir_2']
+        # x_predict = self.sim_data[cols].iloc[-1].to_numpy().reshape(1, -1)
+        # d_travel = self.clf.predict(x_predict)[0]
+        # return d_travel
+        return 10
 
 
 def main():

@@ -9,6 +9,10 @@ from trajectory import Trajectory
 
 
 class PyTrajectory(Trajectory):
+    def __init__(self, data, l_df, l_xy, clf):
+        super(PyTrajectory, self).__init__(data, l_df, l_xy)
+        self.clf = clf
+
     def predict(self):
         """
         overrides method of superclass, used for predicting distance.
