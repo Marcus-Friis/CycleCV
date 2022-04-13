@@ -122,6 +122,14 @@ class Wrangler:
 
     @staticmethod
     def cut_ends(df, poly, threshold=50):
+        """
+        Cut ends of trajectory, remove wiggly parts
+
+        :param df: DataFrame
+        :param poly: Polygon, zone to keep
+        :param threshold: int, min number of points in zone
+        :return:
+        """
         cols = ['id', 'class', 'xs', 'ys', 'frames', 'x0', 'y0', 'x1', 'y1']
         d = {c: [] for c in cols}
         for _, row in df.loc[df['class'] == 'Car'].iterrows():
@@ -227,7 +235,7 @@ class Wrangler:
                 d['direction'].append(direction)
                 encoding = d_enc.transform([[direction]]).toarray()
                 for n in range(3):
-                    d['dir_' + str(n)].append([encoding[0, n]]*len(rowx-1))
+                    d['dir_' + str(n)].append([encoding[0, n]]*(len(rowx)-1))
 
                 d_t1 = []
                 d_t2 = []
