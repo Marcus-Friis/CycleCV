@@ -9,12 +9,12 @@ from torch.utils.data import TensorDataset, DataLoader
 from wrangler import Wrangler
 
 
-# LSTM regressor model with linear layer at the end. Predicts many-to-many and uses padded inputs.
+# Batch first LSTM regressor model with linear layer at the end. Predicts many-to-many and uses padded inputs.
 # For this purpose, lengths of sequences is an input in forward needed for packing the sequences.
-# This implementation also trains on the padding and is batch first.
-class LSTM(nn.Module):
-    def __init__(self, input_dim: int, hidden_dim: int, output_dim: int, num_layers: int, dropout: float, total_length: int):
-        super(LSTM, self).__init__()
+# This implementation flattens result of LSTM layer in forward and removes padding.
+class LSTMPaddingAware(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim, num_layers, dropout, total_length):
+        super(LSTMPaddingAware, self).__init__()
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.output_dim = output_dim
@@ -27,18 +27,48 @@ class LSTM(nn.Module):
         self.fc = nn.Linear(self.hidden_dim, self.output_dim)
 
     def forward(self, x, x_lens):
-        # forward takes x-shape=(batch, sequence, input_dim)
+        # forward takes x-shape = (batch, sequence, input_dim)
 
         # pack padded sequences for LSTM processing
         x_pack = pack_padded_sequence(x, x_lens, batch_first=True, enforce_sorted=False)
         out, (hn, cn) = self.lstm(x_pack)
 
-        # unpack and feed to forward layer
-        out_pad, out_lens = pad_packed_sequence(out, batch_first=True, total_length=self.total_length)
-        out = self.fc(out_pad)
+        # unpack, flatten, and mask non-padding values to omit padding and forward to linear layer
+        # n = sequence length, i = iterator for each element in batch, idx = indexes of non-padding
+        # [1, 2, 3, 0, 0, 0, 1, 2, 3, 4, 0, 0] ---remove padding---> [1, 2, 3, 1, 2, 3, 4]
+        #
+        # -----------------EXAMPLE--------------------
+        # x = [1, 2, 3, 0, 0, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 6],  lens = [3, 5, 6],  n = 6
+        #
+        #       i = 0: n * i = 0,   n * i + lens[i] = 3   ---->  torch.arange() = [0, 1, 2]
+        #       i = 1: n * i = 6,   n * i + lens[i] = 11  ---->  torch.arange() = [6, 7, 8, 9, 10, 11]
+        #       i = 2: n * i = 12,  n * i + lens[i] = 18  ---->  torch.arange() = [12, 13, 14, 15, 16, 17]
 
-        # out-shape=(sum(x_lens), output_dim)
+        out_pad, out_lens = pad_packed_sequence(out, batch_first=True, total_length=self.total_length)
+        n = out_pad.size(1)
+        idx = torch.concat([torch.arange(n * i, n * i + out_lens[i]) for i in range(out_lens.size(0))])
+
+        # forward unpadded data to linear layer
+        out_fc = torch.flatten(out_pad, start_dim=0, end_dim=1)[idx]
+        out = self.fc(out_fc)
+
+        # out-shape = (batch, sequence, output_dim)
         return out
+
+
+def remove_padding_idx(x, lens):
+    # x = padded input,  lens = unpadded lens of input,  n = padded sequence length
+    # [1, 2, 3, 0, 0, 0, 1, 2, 3, 4, 0, 0] ---remove padding---> [1, 2, 3, 1, 2, 3, 4]
+    #
+    # -----------------EXAMPLE--------------------
+    # x = [1, 2, 3, 0, 0, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 6],  lens = [3, 5, 6],  n = 6
+    #
+    #       i = 0: n * i = 0,   n * i + lens[i] = 3   ---->  torch.arange() = [0, 1, 2]
+    #       i = 1: n * i = 6,   n * i + lens[i] = 11  ---->  torch.arange() = [6, 7, 8, 9, 10, 11]
+    #       i = 2: n * i = 12,  n * i + lens[i] = 18  ---->  torch.arange() = [12, 13, 14, 15, 16, 17]
+    n = x.size(1)
+    idx = torch.concat([torch.arange(n * i, n * i + lens[i]) for i in range(x.size(0))])
+    return idx
 
 
 if __name__ == '__main__':
@@ -70,7 +100,8 @@ if __name__ == '__main__':
     train_size = int(0.8 * len(td))
     other_size = (len(td) - train_size) // 2
     train_dataset, test_dataset, val_dataset = torch.utils.data.random_split(td, [train_size, other_size, other_size],
-                                                                      generator=torch.Generator().manual_seed(420))
+                                                                             generator=torch.Generator().manual_seed(
+                                                                                 420))
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
@@ -89,13 +120,14 @@ if __name__ == '__main__':
     learning_rate = 1e-3
     weight_decay = 1e-6
 
-    model = LSTM(input_dim, hidden_dim, output_dim, num_layers, dropout, total_length)
+    model = LSTMPaddingAware(input_dim, hidden_dim, output_dim, num_layers, dropout, total_length)
     loss_fn = nn.MSELoss(reduction="mean")
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
     # Training loop: for each epoch, loops through all batches,
     # makes prediction, calculates loss and backpropagates gradients.
     # Also keeps track of training- and validation loss
+    # This version also removes padding from y_batch to match the forward of LSTMPaddingAware
     train_loss = []
     val_loss = []
     for epoch in range(1, n_epochs+1):
@@ -105,9 +137,13 @@ if __name__ == '__main__':
         model.train()
         batch_loss = []
         for x_batch, y_batch, l_batch in train_loader:
-            y_hat = model(x_batch, l_batch)
+            # remove padding from y_batch to match forward of LSTMPaddingAware
+            idx = remove_padding_idx(y_batch, l_batch)
+            y_true = torch.flatten(y_batch, start_dim=0, end_dim=1)[idx]
 
-            loss = loss_fn(y_batch, y_hat)
+            y_hat = model(x_batch, l_batch)
+            
+            loss = loss_fn(y_true, y_hat)
             loss.backward()
 
             optimizer.step()
@@ -121,14 +157,17 @@ if __name__ == '__main__':
         batch_val_loss = []
         with torch.no_grad():
             for x_val, y_val, l_val in val_loader:
+                idx = remove_padding_idx(y_val, l_val)
+                y_true = torch.flatten(y_val, start_dim=0, end_dim=1)[idx]
+
                 y_hat = model(x_val, l_val)
 
-                loss = loss_fn(y_val, y_hat)
+                loss = loss_fn(y_true, y_hat)
                 batch_val_loss.append(loss.item())
             val_loss.append(np.mean(batch_val_loss))
 
     # save trained model
-    torch.save(model.state_dict(), 'models/lstm.pt')
+    torch.save(model.state_dict(), 'models/lstm_pad_aware.pt')
 
     # plot training and validation loss
     fig, ax = plt.subplots()
