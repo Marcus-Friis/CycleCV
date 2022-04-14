@@ -52,7 +52,7 @@ class LSTMPaddingAware(nn.Module):
         out_fc = torch.flatten(out_pad, start_dim=0, end_dim=1)[idx]
         out = self.fc(out_fc)
 
-        # out-shape = (batch, sequence, output_dim)
+        # out-shape = (sum(x_lens), output_dim)
         return out
 
 

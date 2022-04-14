@@ -27,7 +27,7 @@ class LSTM(nn.Module):
         self.fc = nn.Linear(self.hidden_dim, self.output_dim)
 
     def forward(self, x, x_lens):
-        # forward takes x-shape=(batch, sequence, input_dim)
+        # forward takes x-shape = (batch, sequence, input_dim)
 
         # pack padded sequences for LSTM processing
         x_pack = pack_padded_sequence(x, x_lens, batch_first=True, enforce_sorted=False)
@@ -37,7 +37,7 @@ class LSTM(nn.Module):
         out_pad, out_lens = pad_packed_sequence(out, batch_first=True, total_length=self.total_length)
         out = self.fc(out_pad)
 
-        # out-shape=(sum(x_lens), output_dim)
+        # out-shape = (batch, sequence, output_dim)
         return out
 
 
