@@ -41,8 +41,10 @@ class LSTMPaddingAware(nn.Module):
         # x = [1, 2, 3, 0, 0, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 6],  lens = [3, 5, 6],  n = 6
         #
         #       i = 0: n * i = 0,   n * i + lens[i] = 3   ---->  torch.arange() = [0, 1, 2]
-        #       i = 1: n * i = 6,   n * i + lens[i] = 11  ---->  torch.arange() = [6, 7, 8, 9, 10, 11]
+        #       i = 1: n * i = 6,   n * i + lens[i] = 11  ---->  torch.arange() = [6, 7, 8, 9, 10]
         #       i = 2: n * i = 12,  n * i + lens[i] = 18  ---->  torch.arange() = [12, 13, 14, 15, 16, 17]
+        # idx    = [0, 1, 2, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17]
+        # x[idx] = [1, 2, 3, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 6]
 
         out_pad, out_lens = pad_packed_sequence(out, batch_first=True, total_length=self.total_length)
         n = out_pad.size(1)
@@ -64,8 +66,11 @@ def remove_padding_idx(x, lens):
     # x = [1, 2, 3, 0, 0, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 6],  lens = [3, 5, 6],  n = 6
     #
     #       i = 0: n * i = 0,   n * i + lens[i] = 3   ---->  torch.arange() = [0, 1, 2]
-    #       i = 1: n * i = 6,   n * i + lens[i] = 11  ---->  torch.arange() = [6, 7, 8, 9, 10, 11]
+    #       i = 1: n * i = 6,   n * i + lens[i] = 11  ---->  torch.arange() = [6, 7, 8, 9, 10]
     #       i = 2: n * i = 12,  n * i + lens[i] = 18  ---->  torch.arange() = [12, 13, 14, 15, 16, 17]
+    # idx    = [0, 1, 2, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17]
+    # x[idx] = [1, 2, 3, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 6]
+
     n = x.size(1)
     idx = torch.concat([torch.arange(n * i, n * i + lens[i]) for i in range(x.size(0))])
     return idx
@@ -116,7 +121,7 @@ if __name__ == '__main__':
     total_length = x_pad.size(1)
 
     # training parameters
-    n_epochs = 10
+    n_epochs = 100
     learning_rate = 1e-3
     weight_decay = 1e-6
 
@@ -176,7 +181,8 @@ if __name__ == '__main__':
     ax.plot(range(n_epochs), val_loss, label="Validation loss")
     ax.legend()
     ax.set_ylim(0)
-    plt.show()
+    # plt.show()
+    plt.savefig('lstm_pad_aware.png')
 
     # EXAMPLE
     # lstm = LSTM(10, 100, 1, 2, 0)
