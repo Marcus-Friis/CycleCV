@@ -4,6 +4,8 @@ import hdbscan
 import numpy as np
 import pandas as pd
 import geopandas as gpd
+from PIL import Image, ImageOps
+from matplotlib import pyplot as plt
 from shapely.geometry import Point, Polygon
 from sklearn.preprocessing import OneHotEncoder
 
@@ -33,14 +35,19 @@ class Wrangler:
         # set mapping of cluster : light, use default if None
         self.light_dict = light_dict
         if light_dict is None:
-            self.light_dict = {0: 7, 1: 6, 2: 5, 3: 9, 4: 8, 5: 6, 6: 10, 7: 6, 8: 4, 9: 4, 10: 11, 11: 5}
+            # self.light_dict = {0: 7, 1: 6, 2: 5, 3: 9, 4: 8, 5: 6, 6: 10, 7: 6, 8: 4, 9: 4, 10: 11, 11: 5}
+            self.light_dict = {0: 7, 1: 5, 2: 6, 3: 9, 4: 8, 5: 6, 6: 4, 7: 10, 8: 6, 9: 4, 10: 11, 11: 5}
 
         # set mapping of cluster : direction, use default if None
         self.direction_dict = direction_dict
         if direction_dict is None:
+            # self.direction_dict = {
+            #     0: 'right', 1: 'straight', 2: 'left', 3: 'left', 4: 'straight', 5: 'left',
+            #     6: 'right', 7: 'right', 8: 'straight', 9: 'left', 10: 'right', 11: 'straight'
+            # }
             self.direction_dict = {
-                0: 'right', 1: 'straight', 2: 'left', 3: 'left', 4: 'straight', 5: 'left',
-                6: 'right', 7: 'right', 8: 'straight', 9: 'left', 10: 'right', 11: 'straight'
+                                      0: 'right', 1: 'left', 2: 'straight', 3: 'left', 4: 'straight', 5: 'left',
+                                      6: 'left', 7: 'right', 8: 'right', 9: 'straight', 10: 'right', 11: 'straight'
             }
 
     @staticmethod
@@ -434,6 +441,17 @@ class Wrangler:
             mask |= df['class'] == c
         return df.loc[mask], mask
 
+    @staticmethod
+    def remove_long_traj(df):
+        for c in np.unique(df['cluster']):
+            mask = df['cluster'] == c
+            lens = np.array([len(row['xs']) for _, row in df.loc[mask].iterrows()])
+            cut = np.percentile(lens, 95)
+            remove = lens > cut
+            idx = df.loc[mask].loc[remove].index
+            df = df.drop(idx)
+        return df
+
 
 def main():
     df = Wrangler.load_pickle('bsc-3m/traj_01_elab.pkl')
@@ -471,14 +489,35 @@ def main():
     df['cluster'] = xc
     fdf = detect_outliers(clusterer, df)
     fdf = fdf.loc[fdf['cluster'] != -1]
+
+    # removing super long trajectories
+    fdf = Wrangler.remove_long_traj(fdf)
+
+    # plotting clusters
+    fig, ax = plt.subplots(nrows=4, ncols=3, figsize=(20, 20))
+    img = Image.open("intersection2.png")
+    img = ImageOps.flip(img)
+
+    for r in range(4):
+        for c in range(3):
+            cluster = r * 3 + c
+            ax[r, c].set_title(f'cluster {cluster}')
+            ax[r, c].set_xlim(0, 1280)
+            ax[r, c].set_ylim(0, 720)
+            ax[r, c].imshow(img, origin='lower')
+            mask = fdf['cluster'] == cluster
+            for _, row in fdf.loc[mask].iterrows():
+                ax[r, c].plot(row['xs'], row['ys'], c='b', alpha=0.05)
+    plt.savefig('figs/clusters.svg')
+
     print('start')
     # wrangle data into shape
-    wr = Wrangler(fdf, l_xy, l_df) \
-        .load_pdf('data/pdf_zones.pkl') \
-        .get_nndf(dump=True, path='data/nndf.pkl')
     # wr = Wrangler(fdf, l_xy, l_df) \
-    #     .init_attributes(all_df, step_size=5, dump=True, path='data/pdf_zones.pkl') \
+    #     .load_pdf('data/pdf_zones.pkl') \
     #     .get_nndf(dump=True, path='data/nndf.pkl')
+    wr = Wrangler(fdf, l_xy, l_df) \
+        .init_attributes(all_df, step_size=5, dump=True, path='data/pdf.pkl') \
+        .get_nndf(dump=True, path='data/nndf.pkl')
 
 
 if __name__ == '__main__':
