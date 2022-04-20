@@ -3,16 +3,22 @@ import pickle
 import hdbscan
 import numpy as np
 import pandas as pd
-import geopandas as gpd
 from PIL import Image, ImageOps
 from matplotlib import pyplot as plt
 from shapely.geometry import Point, Polygon
 from sklearn.preprocessing import OneHotEncoder
 
 from clustering_helper_funcs import get_hyperparameters, detect_outliers
-from shape_helper_funcs import normalize, get_polygons, rotate
+from shape_helper_funcs import get_polygons
 
 
+# Wrangler class, used for wrangling data into formats and calculating features.
+# This class is very messy at the moment.
+# In short, it has methods to calculate different supporting DataFrames, calculate and extract data from trajectories,
+# load and dump files etc.
+# The main functionality is init_attributes -> pdf and get_nndf -> nndf.
+# pdf is a DataFrame where each trajectory is a row, and is stored as lists in the DataFrame.
+# nndf is a DataFrame where each frame is a row, used for training models.
 class Wrangler:
     def __init__(self, df, l_xy, l_df, light_dict: dict = None, direction_dict: dict = None):
         """
@@ -33,12 +39,14 @@ class Wrangler:
         self.nndf = None
 
         # set mapping of cluster : light, use default if None
+        # NOTE THIS MAPPING CAN CHANGE DEPENDING ON MANIPULATIONS OF THE DATA
         self.light_dict = light_dict
         if light_dict is None:
             # self.light_dict = {0: 7, 1: 6, 2: 5, 3: 9, 4: 8, 5: 6, 6: 10, 7: 6, 8: 4, 9: 4, 10: 11, 11: 5}
             self.light_dict = {0: 7, 1: 5, 2: 6, 3: 9, 4: 8, 5: 6, 6: 4, 7: 10, 8: 6, 9: 4, 10: 11, 11: 5}
 
         # set mapping of cluster : direction, use default if None
+        # NOTE THIS MAPPING CAN CHANGE DEPENDING ON MANIPULATIONS OF THE DATA
         self.direction_dict = direction_dict
         if direction_dict is None:
             # self.direction_dict = {
@@ -90,7 +98,7 @@ class Wrangler:
     @staticmethod
     def get_all_df(df, dump: bool = True, path: str = None):
         """
-        get DataFrame with positions of all objects to each frame
+        get DataFrame with positions of all objects to each frame. must have to init_attributes
 
         :param df: DataFrame to extract data from
         :param path: path to save location
@@ -100,7 +108,6 @@ class Wrangler:
         d = {
             'x': [],
             'y': [],
-        #     'point': [],
             'frame': [],
             'class': [],
             'id': []
@@ -110,14 +117,11 @@ class Wrangler:
             for i in range(len(row['xs'])):
                 d['x'].append(row['xs'][i])
                 d['y'].append(row['ys'][i])
-                # d['point'].append(Point([row['xs'][i], row['ys'][i]]))
                 d['frame'].append(row['frames'][i])
                 d['class'].append(row['class'])
                 d['id'].append(row['id'])
 
         all_df = pd.DataFrame(d)
-        # all_df = gpd.GeoDataFrame(d)
-        # all_df = all_df.set_geometry('point')
 
         if dump:
             if path is None:
@@ -130,21 +134,28 @@ class Wrangler:
     @staticmethod
     def cut_ends(df, poly, threshold=50):
         """
-        Cut ends of trajectory, remove wiggly parts
+        Cut ends of car trajectories, remove wiggly parts
 
         :param df: DataFrame
         :param poly: Polygon, zone to keep
         :param threshold: int, min number of points in zone
         :return:
         """
+
+        # init dict to use for DataFrame
         cols = ['id', 'class', 'xs', 'ys', 'frames', 'x0', 'y0', 'x1', 'y1']
         d = {c: [] for c in cols}
+
+        # for each car trajectory in trajectories
         for _, row in df.loc[df['class'] == 'Car'].iterrows():
+            # track how many points are in the zone
             in_list = []
             for i, (x, y) in enumerate(zip(row['xs'], row['ys'])):
                 p = Point([x, y])
                 if poly.contains(p):
                     in_list.append(i)
+
+            # if there are more points in the zone than a threshold, add trajectory to DataFrame
             if len(in_list) > threshold:
                 d['id'].append(row['id'])
                 d['class'].append(row['class'])
@@ -162,7 +173,7 @@ class Wrangler:
     def init_attributes(self, all_df, step_size: int = 1, num_zones: int = 20, dump: bool = False, path: str = None):
         """
         wrangle data and calculate various attributes from DataFrame,
-        must be done before other wrangling,
+        must be done before get_nndf,
         can also be loaded with load_pdf
 
         :param all_df: DataFrame of all xy for all objects to each frame
@@ -197,44 +208,65 @@ class Wrangler:
 
         }
 
+        # init one-hot-encoders for categorical variables
         l_enc = OneHotEncoder(handle_unknown='ignore').fit(np.array([0, 1, 2, 3]).reshape(-1, 1))
         d_enc = OneHotEncoder(handle_unknown='ignore').fit(np.array(['left', 'straight', 'right']).reshape(-1, 1))
         classes = np.unique(self.df['class']).reshape(-1, 1)
         c_enc = OneHotEncoder(handle_unknown='ignore').fit(classes)
 
+        # init all classes
         for i, n in enumerate(classes):
             d['c_' + str(i)] = []
 
+        # init zones
         for i in range(num_zones):
             d['d_zone_' + str(i)] = []
             d['zone_' + str(i)] = []
 
+        # for every trajectory, extract and calculate features
         for df_index, row in self.df.iterrows():
             try:
                 print(df_index)
+                # get x and y, [::step_size] gives every step_size frame
                 rowx = np.array(row['xs'][::step_size])
                 rowy = np.array(row['ys'][::step_size])
+
+                # get frames
                 frames = np.array(row['frames'][::step_size][:-1])
+
+                # calculate midpoint of corresponding traffic light, used for calculating a cars distance to light
                 l_mid = self._get_mid(self.l_xy[self.light_dict[row['cluster']]])
 
+                # light color for each trajectory's corresponding traffic light
                 l_color = np.array([self.l_df.loc[f][str(self.light_dict[row['cluster']])] for f in frames])
 
+                # one-hot-encode classes, redundant since we only use 'car' class
                 encoding = c_enc.transform([[row['class']]]).toarray()
                 for i in range(classes.shape[0]):
                     d['c_' + str(i)].append(encoding[0, i])
 
+                # add light_index of trajectory as column
                 d['light_index'].append(self.light_dict[row['cluster']])
+
+                # add x and y, not the last coordinate because there is no target for the last step
                 d['x'].append(rowx[:-1])
                 d['y'].append(rowy[:-1])
+
+                # add id of trajectory
                 d['id'] = row['id']
+
+                # add light color and distance to light, light color is one-hot-encoded
                 d['light_color'].append(l_color)
                 d['d_light'].append(self._d2l(rowx[:-1], rowy[:-1], l_mid))
                 encoding = l_enc.transform(l_color.reshape(-1, 1)).toarray()
                 for n in range(4):
                     d['l' + str(n)].append(encoding[:, n])
 
+                # calculate and add euclidean distances, target of future training
                 eucs = self._euc(rowx, rowy)
                 d['euc'].append(eucs)
+
+                # add frames, class, cluster, direction
                 d['frames'].append(frames)
                 d['class'].append(row['class'])
                 d['cluster'].append(row['cluster'])
@@ -244,6 +276,7 @@ class Wrangler:
                 for n in range(3):
                     d['dir_' + str(n)].append([encoding[0, n]]*(len(rowx)-1))
 
+                # columns for previous distances, default to 0 if no previous distance exists
                 d_t1 = []
                 d_t2 = []
                 d_t3 = []
@@ -264,15 +297,19 @@ class Wrangler:
                 d['d_t-2'].append(d_t2)
                 d['d_t-3'].append(d_t3)
 
+                # get polygons as vision mechanic for car
                 all_polygons = []
                 for i in range(len(rowx) - 1):
-                    v1 = np.array([rowx[i], rowy[i]])
-                    v_next = np.array([rowx[i+1], rowy[i+1]])
+                    v1 = np.array([rowx[i], rowy[i]])  # current position
+                    v_next = np.array([rowx[i+1], rowy[i+1]])  # next position
+
                     try:
                         count = 1
+                        # if current position and next position are equal, use the next position + t as next position
                         while np.all(v1 == v_next):
                             v_next = np.array([rowx[i+1+count], rowy[i+1+count]])
                             count += 1
+                        # get num_zones polygons 360 degrees around the car
                         polygons = get_polygons(v1, v_next, num_zones)
                         all_polygons.append(polygons)
                     except IndexError:
@@ -280,32 +317,40 @@ class Wrangler:
 
                 all_polygons = np.array(all_polygons)
 
+                # add polygons to DataFrane
                 for i in range(num_zones):
                     d['zone_' + str(i)].append(all_polygons[:, i])
 
+                # with the polygons known, calculate if an object exists inside a zone to each frame using all_df
+                # generated using get_all_df method
                 d_zone = [[] for _ in range(num_zones)]
                 for i, frame in enumerate(frames):
-                    p = Point([rowx[i], rowy[i]])
-                    all_df_f = all_df.loc[all_df['frame'] == frame]
+                    p = Point([rowx[i], rowy[i]])  # current point
+                    all_df_f = all_df.loc[all_df['frame'] == frame]  # get all objects in current frame
+                    # for each zone, check if an object exists within it and return distance
                     for z in range(num_zones):
-                        zone = all_polygons[i, z]
+                        zone = all_polygons[i, z]  # current zone
                         d_f = [[] for _ in range(num_zones)]
                         for _, xy in all_df_f.iterrows():
-                            pz = Point([xy['x'], xy['y']])
-                            if zone.contains(pz):
-                                d_f[z].append(p.distance(pz))
-                        try:
+                            pz = Point([xy['x'], xy['y']])  # objects position
+                            if zone.contains(pz):  # if zone contains object
+                                d_f[z].append(p.distance(pz))  # get distance to object
+                        try:  # append closest object to df
                             d_zone[z].append(min(d_f[z]))
-                        except ValueError:
+                        except ValueError:  # if no objects are in zone, default to 1000
                             d_zone[z].append(1000)
+
+                # add data to DataFrame
                 for z in range(num_zones):
                     d['d_zone_' + str(z)].append(d_zone[z])
 
             except RuntimeError:
                 continue
 
+        # get DataFrame
         self.pdf = pd.DataFrame(d)
 
+        # dump file if desired
         if dump:
             if path is None:
                 self.dump_pickle(self.pdf, 'pdf.pkl')
@@ -326,7 +371,7 @@ class Wrangler:
 
     def get_nndf(self, num_zones: int = 20, dump: bool = False, path: str = None):
         """
-        get data formatted for training neural networks,
+        get data formatted for training models,
         must run init_attributes or load_pdf before this method
 
         :param num_zones: int, number of zones in pdf
@@ -337,6 +382,7 @@ class Wrangler:
         if self.pdf is None:
             raise RuntimeError('Must init pdf with init_attributes or load_pdf first')
 
+        # init dictionary for DataFrame
         d = {
             'index': [],
             'x': [],
@@ -358,16 +404,22 @@ class Wrangler:
             'target': []
         }
 
+        # init class columns
         classes = np.unique(self.df['class']).reshape(-1, 1)
         for i, n in enumerate(classes):
             d['c_' + str(i)] = []
 
+        # init zone columns
         for i in range(num_zones):
             d['d_zone_' + str(i)] = []
             d['zone_' + str(i)] = []
 
+        # for every trajectory, make each frame its' own row
         for index, row in self.pdf.iterrows():
+            # start from 3 since we have previous distance information
+            # arguably try starting from 0 to see if it produces better results
             for i in range(3, len(row['x'])):
+                # for every frame, add data to DataFrame
                 d['index'].append(index)
                 d['x'].append(row['x'][i])
                 d['y'].append(row['y'][i])
@@ -393,8 +445,9 @@ class Wrangler:
                     d['d_zone_' + str(n)].append(row['d_zone_' + str(n)][i])
                     d['zone_' + str(n)].append(row['zone_' + str(n)][i])
 
-        self.nndf = pd.DataFrame(d)
+        self.nndf = pd.DataFrame(d)  # create DataFrame
 
+        # save file if desired
         if dump:
             if path is None:
                 self.dump_pickle(self.nndf, 'nndf.pkl')
@@ -443,6 +496,13 @@ class Wrangler:
 
     @staticmethod
     def remove_long_traj(df):
+        """
+        removes trajectories with above 95 percentile number of points.
+        hopefully removes wrongly tracked or outlier trajectories
+
+        :param df: df
+        :return: df
+        """
         for c in np.unique(df['cluster']):
             mask = df['cluster'] == c
             lens = np.array([len(row['xs']) for _, row in df.loc[mask].iterrows()])
@@ -453,17 +513,22 @@ class Wrangler:
         return df
 
 
-def main():
+# if running wrangler.py, wrangle data into pdf and nndf using methods from Wrangler
+if __name__ == '__main__':
+    # --------load raw data--------
+    # load raw trajectory data
     df = Wrangler.load_pickle('bsc-3m/traj_01_elab.pkl')
     df_frames = Wrangler.load_pickle('bsc-3m/traj_01_elab_new.pkl')
     df = df.join(df_frames['frames'])
 
-    # all_df = Wrangler.get_all_df(df, dump=True, path='data/all_df.pkl')
-    all_df = Wrangler.load_pickle('data/all_df.pkl')
-
     # load traffic lights coordinates and color info
     l_xy = Wrangler.load_pickle('bsc-3m/signal_lines_true.pickle')
     l_df = pd.read_csv('bsc-3m/signals_dense.csv')
+
+    # --------preprocess before creating pdf and nndf--------
+    # get all_df
+    # all_df = Wrangler.get_all_df(df, dump=True, path='data/all_df.pkl')
+    all_df = Wrangler.load_pickle('data/all_df.pkl')
 
     # select strictly cars, remove later?
     df, _ = Wrangler.filter_class(df, ['Car'])
@@ -478,6 +543,7 @@ def main():
 
     # cluster and remove outliers
     # HDBSCAN for now, try other in future?
+    # should be added as method to Wrangler
     min_cluster_size, min_samples, cluster_selection_epsilon = get_hyperparameters('Car', '')
     clusterer = hdbscan.HDBSCAN(
         min_cluster_size=min_cluster_size,
@@ -493,8 +559,8 @@ def main():
     # removing super long trajectories
     fdf = Wrangler.remove_long_traj(fdf)
 
-    # plotting clusters
-    fig, ax = plt.subplots(nrows=4, ncols=3, figsize=(20, 20))
+    # plot all clusters in figure and save in figs/
+    fig, ax = plt.subplots(nrows=4, ncols=3, figsize=(40, 40))
     img = Image.open("intersection2.png")
     img = ImageOps.flip(img)
 
@@ -502,14 +568,17 @@ def main():
         for c in range(3):
             cluster = r * 3 + c
             ax[r, c].set_title(f'cluster {cluster}')
-            ax[r, c].set_xlim(0, 1280)
-            ax[r, c].set_ylim(0, 720)
+            ax[r, c].set_xlim(0, 1280)  # set x-range to resolution
+            ax[r, c].set_ylim(0, 720)  # set y-range to resoultion
             ax[r, c].imshow(img, origin='lower')
             mask = fdf['cluster'] == cluster
             for _, row in fdf.loc[mask].iterrows():
                 ax[r, c].plot(row['xs'], row['ys'], c='b', alpha=0.05)
+            ax[r, c].get_xaxis().set_visible(False)  # hide x-axis
+            ax[r, c].get_yaxis().set_visible(False)  # hide y-axis
     plt.savefig('figs/clusters.svg')
 
+    # --------create pdf and nndf--------
     print('start')
     # wrangle data into shape
     # wr = Wrangler(fdf, l_xy, l_df) \
@@ -518,7 +587,3 @@ def main():
     wr = Wrangler(fdf, l_xy, l_df) \
         .init_attributes(all_df, step_size=5, dump=True, path='data/pdf.pkl') \
         .get_nndf(dump=True, path='data/nndf.pkl')
-
-
-if __name__ == '__main__':
-    main()
