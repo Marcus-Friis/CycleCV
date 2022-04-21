@@ -1,4 +1,5 @@
 import pickle
+import sys
 
 import hdbscan
 import numpy as np
@@ -15,7 +16,7 @@ from shape_helper_funcs import get_polygons
 # Wrangler class, used for wrangling data into formats and calculating features.
 # This class is very messy at the moment.
 # In short, it has methods to calculate different supporting DataFrames, calculate and extract data from trajectories,
-# load and dump files etc.
+# load and dump files etc. All static methods must be run before init_attributes and get_nndf.
 # The main functionality is init_attributes -> pdf and get_nndf -> nndf.
 # pdf is a DataFrame where each trajectory is a row, and is stored as lists in the DataFrame.
 # nndf is a DataFrame where each frame is a row, used for training models.
@@ -495,7 +496,7 @@ class Wrangler:
         return df.loc[mask], mask
 
     @staticmethod
-    def remove_long_traj(df):
+    def remove_outlier_points_traj(df):
         """
         removes trajectories with above 95 percentile number of points.
         hopefully removes wrongly tracked or outlier trajectories
@@ -511,6 +512,56 @@ class Wrangler:
             idx = df.loc[mask].loc[remove].index
             df = df.drop(idx)
         return df
+
+    @staticmethod
+    def add_trajectory_lens(df):
+        """
+        adds trajectory lengths to DataFrame
+
+        :param df: DataFrame
+        :return: DataFrame, with added column
+        """
+        lengths = []
+        for _, row in df.iterrows():
+            trajectory = np.vstack(row[['xs', 'ys']].to_numpy()).T
+            length = Wrangler.trajectory_len(trajectory)
+            lengths.append(length)
+        df['traj_lengths'] = lengths
+        return df
+
+    @staticmethod
+    def remove_long_traj(df):
+        """
+        for each cluster, remove the longest ones
+
+        :param df: DataFrame
+        :return: DataFrame, with removed rows
+        """
+        for c in np.unique(df['cluster']):
+            mask = df['cluster'] == c
+            lens = df.loc[mask, 'traj_lengths']
+            cut = np.percentile(lens, 90)
+            remove = lens > cut
+            idx = df.loc[mask].loc[remove].index
+            df = df.drop(idx)
+        return df
+
+    @staticmethod
+    def trajectory_len(trajectory, total_length=0):
+        """
+        calculates length of trajectory
+
+        :param trajectory: np.array, trajectory with shape (-1,2)
+        :param total_length: 0, length of trajectory, init to 0
+        :return: float, total length of trajectory
+        """
+        if trajectory.shape[0] <= 1:
+            return total_length
+        a = trajectory[0]
+        b = trajectory[1]
+        length = np.linalg.norm(a - b)
+        total_length += length
+        return Wrangler.trajectory_len(trajectory[1:], total_length)
 
 
 # if running wrangler.py, wrangle data into pdf and nndf using methods from Wrangler
@@ -556,7 +607,12 @@ if __name__ == '__main__':
     fdf = detect_outliers(clusterer, df)
     fdf = fdf.loc[fdf['cluster'] != -1]
 
-    # removing super long trajectories
+    # removing trajectories with highest number of points
+    fdf = Wrangler.remove_outlier_points_traj(fdf)
+
+    # remove trajectories that are too long for their cluster
+    sys.setrecursionlimit(10000)
+    fdf = Wrangler.add_trajectory_lens(fdf)
     fdf = Wrangler.remove_long_traj(fdf)
 
     # plot all clusters in figure and save in figs/
