@@ -46,8 +46,9 @@ if __name__ == '__main__':
     cols = ['x', 'y', 'd_t-1', 'd_t-2', 'd_t-3', 'd_light', 'l0', 'l1',
             'l2', 'l3', 'dir_0', 'dir_1', 'dir_2'] + ['d_zone_'+str(i) for i in range(20)]
     print('loading data...')
-    file_path = 'data/pdf_69.pkl'
+    file_path = 'data/pdf_train.pkl'
     pdf = Wrangler.load_pickle(file_path)
+    # pdf = pdf.loc[pdf['cluster'] == 4]
 
     # pads sequences by shaping into tensors, calculating lengths and using pad_sequence
     print('preparing sequences...')
@@ -68,12 +69,11 @@ if __name__ == '__main__':
     batch_size = 64
     td = TensorDataset(x_pad, y_pad, lens)
     train_size = int(0.8 * len(td))
-    other_size = (len(td) - train_size) // 2
-    train_dataset, test_dataset, val_dataset = torch.utils.data.random_split(td, [train_size, other_size, other_size],
+    val_size = (len(td) - train_size) // 2
+    train_dataset, val_dataset = torch.utils.data.random_split(td, [train_size, val_size],
                                                                       generator=torch.Generator().manual_seed(420))
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     # hyperparameters of LSTM model
@@ -85,7 +85,7 @@ if __name__ == '__main__':
     total_length = x_pad.size(1)
 
     # training parameters
-    n_epochs = 10
+    n_epochs = 50
     learning_rate = 1e-3
     weight_decay = 1e-6
 
@@ -128,7 +128,9 @@ if __name__ == '__main__':
             val_loss.append(np.mean(batch_val_loss))
 
     # save trained model
-    torch.save(model.state_dict(), 'models/lstm.pt')
+    torch.save(model.state_dict(), 'models/lstm_c4.pt')
+
+    # TODO: implement val and test score
 
     # plot training and validation loss
     fig, ax = plt.subplots()
@@ -137,7 +139,8 @@ if __name__ == '__main__':
     ax.plot(range(n_epochs), val_loss, label="Validation loss")
     ax.legend()
     ax.set_ylim(0)
-    plt.show()
+    # plt.show()
+    plt.savefig('loss_lstm.png')
 
     # EXAMPLE
     # lstm = LSTM(10, 100, 1, 2, 0)

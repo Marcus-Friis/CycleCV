@@ -16,7 +16,7 @@ from trajectory import Trajectory
 from wrangler import Wrangler
 
 if __name__ == '__main__':
-    pdf = Wrangler.load_pickle('data/pdf.pkl')
+    pdf = Wrangler.load_pickle('data/pdf_test.pkl')
 
     l_df = pd.read_csv('bsc-3m/signals_dense.csv')
     l_xy = Wrangler.load_pickle('bsc-3m/signal_lines_true.pickle')
@@ -24,7 +24,7 @@ if __name__ == '__main__':
     # load model ------------------------------------------
     # if LSTM
     model = LSTM(33, 100, 1, 2, 0.2, 849)
-    model.load_state_dict(torch.load('models/lstm_sex.pt'))
+    model.load_state_dict(torch.load('models/lstm.pt'))
     model.eval()
     # if sklearn interface
     # reg = Wrangler.load_pickle('models/xgb.pkl')
