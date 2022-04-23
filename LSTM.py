@@ -69,7 +69,7 @@ if __name__ == '__main__':
     batch_size = 64
     td = TensorDataset(x_pad, y_pad, lens)
     train_size = int(0.8 * len(td))
-    val_size = (len(td) - train_size) // 2
+    val_size = (len(td) - train_size)
     train_dataset, val_dataset = torch.utils.data.random_split(td, [train_size, val_size],
                                                                       generator=torch.Generator().manual_seed(420))
 
