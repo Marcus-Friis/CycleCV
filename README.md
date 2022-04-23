@@ -7,6 +7,10 @@ Containing simulation of traffic at the widely discussed intersection at Dybbøl
 
 TODO: skriv how 2 execute scripts, og hvad de gør, format readme.md til at være gamer, https://dillinger.io/
 
+## introduction
+
+## getting started
+
 ## main functionality
 1. create data directory
 2. run wrangler.py --> pdf.pkl, nndf.pkl
@@ -26,3 +30,5 @@ TODO: skriv how 2 execute scripts, og hvad de gør, format readme.md til at vær
 | LSTM.py | create and train LSTM model on padded pdf.pkl |
 | LSTM_padding_aware | create and train LSTM model on padded pdf.pkl, but removes padding in forward |
 | ... | ... |
+
+## dependencies
