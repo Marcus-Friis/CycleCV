@@ -311,7 +311,7 @@ class Wrangler:
                             v_next = np.array([rowx[i+1+count], rowy[i+1+count]])
                             count += 1
                         # get num_zones polygons 360 degrees around the car
-                        polygons = get_polygons(v1, v_next, num_zones)
+                        polygons = get_polygons(v1, v_next, num_zones, k=1280)
                         all_polygons.append(polygons)
                     except IndexError:
                         all_polygons.append(polygons)
@@ -339,7 +339,7 @@ class Wrangler:
                         try:  # append closest object to df
                             d_zone[z].append(min(d_f[z]))
                         except ValueError:  # if no objects are in zone, default to 1000
-                            d_zone[z].append(1000)
+                            d_zone[z].append(2000)
 
                 # add data to DataFrame
                 for z in range(num_zones):
@@ -641,5 +641,5 @@ if __name__ == '__main__':
     #     .load_pdf('data/pdf_zones.pkl') \
     #     .get_nndf(dump=True, path='data/nndf.pkl')
     wr = Wrangler(fdf, l_xy, l_df) \
-        .init_attributes(all_df, step_size=5, dump=True, path='data/pdf.pkl') \
-        .get_nndf(dump=True, path='data/nndf.pkl')
+        .init_attributes(all_df, step_size=5, num_zones=6, dump=True, path='data/pdf_2000_6.pkl') \
+        .get_nndf(dump=True, path='data/nndf_2000_6.pkl')
