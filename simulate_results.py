@@ -69,16 +69,13 @@ def animate_simulate(traj_count: int, reg, path: str):
 
         # update each trajectory
         for i in range(traj_count):
-            try:
+            if len(t[i].traj_rest) > 0:
                 t[i].step(frame)
-            except IndexError:  # if trajectory is at end
-                continue
+
         # update each trajectory's zone
         for i in range(traj_count):
-            try:
+            if len(t[i].traj_rest) > 0:
                 t[i].get_d_zones(frame)
-            except IndexError:  # if trajectory is at end
-                continue
 
         # plot all dots
         mask = t[0].full_sim_data['frame'] == frame  # get all vehicles in current frame
@@ -118,7 +115,8 @@ if __name__ == '__main__':
     regressors = [Wrangler.load_pickle(n) for n in ['models/xgb.pkl', 'models/lgbmr.pkl',
                                                     'models/cgb.pkl', 'models/mlp.pkl']]
     regressor_names = ['xgb', 'lgbmr', 'cgb', 'mlp']
-    num_movies = 20  # number of videos to produce
+
+    num_movies = 30  # number of videos to produce
     for reg_index, reg in enumerate(regressors):
         seed(1)  # set seed, ensures fair comparison of models
         for movie in range(num_movies):
