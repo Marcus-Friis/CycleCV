@@ -33,7 +33,7 @@ def animate_simulate(traj_count: int, reg, path: str):
     # init moving elements
     ln = [ax.plot([], [])[0] for _ in range(l_df.shape[-1] - 1)]  # traffic light lines
     txt = ax.text(20, 20, '', fontsize=35, color='w')  # frame number
-    sc = ax.scatter([], [], c='r')  # cars
+    sc = ax.scatter([], [], c='r', s=200)  # cars
     patches = ln + [sc] + [txt]
 
     # init trajectories
@@ -118,9 +118,9 @@ if __name__ == '__main__':
     regressors = [Wrangler.load_pickle(n) for n in ['models/xgb.pkl', 'models/lgbmr.pkl',
                                                     'models/cgb.pkl', 'models/mlp.pkl']]
     regressor_names = ['xgb', 'lgbmr', 'cgb', 'mlp']
-    seed(1)  # set seed, ensures fair comparison of models
     num_movies = 20  # number of videos to produce
     for reg_index, reg in enumerate(regressors):
+        seed(1)  # set seed, ensures fair comparison of models
         for movie in range(num_movies):
             print(f'creating\t{movie}...')
             traj_count = randint(2, 10)
