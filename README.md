@@ -1,11 +1,12 @@
 # CycleCV
 
 
-Bachelor Project by Mads, Marcus and Mikkel
+Bachelor Project by Mads Høgenhaug, Marcus Friis and Mikkel Petersen.
 
-Containing simulation of traffic at the widely discussed intersection at Dybbølsbro.
+This repository contains all code used for wrangling data, training models and simulating traffic, along with other extra scripts for visualising data and more. 
 
 ## main pipeline
+To run the core functionality, the core flow is
 1. create data directory
 2. run wrangler.py --> pdf.pkl, nndf.pkl
 3. run train_test_split.py --> split pdf.pkl and nndf.pkl in tran-test split
@@ -13,6 +14,7 @@ Containing simulation of traffic at the widely discussed intersection at Dybbøl
 5. run simulate_results.py --> multiple videos of simulations
 
 ## visualize data in video
+To sync source video with data, do
 1. create frames directory
 2. run video_to_frames.py --> framei.jpg in frames/
 3. run animate_data.py --> data_animation.mp4
@@ -37,3 +39,19 @@ Containing simulation of traffic at the widely discussed intersection at Dybbøl
 
 
 ## dependencies
+This project was created using python version 3.8.5 with the following packages and versions.
+| PACKAGE | VERSION |
+| ------- | ------- |
+| catboost | 1.0.5 |
+| hdbscan | 0.8.27 |
+| lightgbm | 3.3.2 |
+| matplotlib | 3.3.2 |
+| numpy | 1.19.2 |
+| opencv-python | 4.5.5.64 |
+| pandas | 1.4.1 |
+| pillow | 8.0.1 |
+| scikit-learn | 0.24.2 |
+| seaborn | 0.11.0 |
+| shapely | 1.8.1.post1 |
+| torch | 1.11.0 |
+| xgboost | 1.6.0 |
