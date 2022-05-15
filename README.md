@@ -7,11 +7,10 @@ This repository contains all code used for wrangling data, training models and s
 
 ## main pipeline
 To run the core functionality, the core flow is
-1. create data directory
-2. run wrangler.py --> pdf.pkl, nndf.pkl
-3. run train_test_split.py --> split pdf.pkl and nndf.pkl in tran-test split
-4. run LSTM.py, model_train.py --> model in models/
-5. run simulate_results.py --> multiple videos of simulations
+1. run wrangler.py --> pdf.pkl, nndf.pkl
+2. run train_test_split.py --> split pdf.pkl and nndf.pkl in tran-test split
+3. run LSTM.py, model_train.py --> models
+4. run simulate_results.py --> multiple videos of simulations
 
 ## visualize data in video
 To sync source video with data, do
